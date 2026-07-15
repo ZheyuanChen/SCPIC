@@ -1,2 +1,35 @@
-.venv
-venv
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Packaging and build artefacts
+build/
+dist/
+*.egg-info/
+
+# IDE and operating-system files
+.idea/
+.vscode/
+.DS_Store
+*~
+
+# Generated SCPIC/EPOCH data and local run output
+epoch_injection_data/
+epoch_tests/runs/
+*.sdf
+
+# Local EPOCH build products
+epoch_dev/
+epoch*/bin/
+epoch*/obj/
