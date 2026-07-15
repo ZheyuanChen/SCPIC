@@ -150,6 +150,45 @@ class ParabolicMirror3D:
             inner_diameter=inner_diameter,
         )
 
+    @classmethod
+    def fourmaux_tp_2025(cls):
+        """Return the NA=0.96 transmission parabola tested by Fourmaux et al.
+
+        The published optic has a 5.65-mm parent focal length, a 24.5-mm
+        central aperture and a 65-mm illuminated outer diameter.  Its quoted
+        ray-angle range is 38.3--85.4 degrees.  The measured Zernike
+        coefficients were not published and must be supplied separately.
+        """
+        return cls(
+            f0=5.65e-3,
+            D=65e-3,
+            mirror_type="TP",
+            inner_diameter=24.5e-3,
+        )
+
+    @property
+    def focusing_angle_range(self):
+        """Return minimum and maximum focus-ray angles for an on-axis cut.
+
+        Angles are the acute angles used for the generalized-solid-angle NA
+        in Vallières and Fourmaux.  The property is defined only for centred
+        HNAP/TP apertures.
+        """
+        if not np.allclose(self.aperture_centre, (0.0, 0.0), atol=0.0):
+            raise ValueError("focusing_angle_range requires an on-axis aperture")
+        radii = np.array([self.inner_diameter / 2, self.D / 2], dtype=float)
+        distances = self.f0 + radii**2 / (4 * self.f0)
+        angles = np.arcsin(np.clip(radii / distances, 0.0, 1.0))
+        return float(np.min(angles)), float(np.max(angles))
+
+    @property
+    def generalized_numerical_aperture(self):
+        """Return the solid-angle numerical aperture used for annular TPs."""
+        theta_min, theta_max = self.focusing_angle_range
+        solid_angle_fraction = np.cos(theta_min) - np.cos(theta_max)
+        effective_angle = np.arccos(1 - solid_angle_fraction)
+        return float(np.sin(effective_angle))
+
     @property
     def aperture_centre(self):
         if self.mirror_type == "OAP90":

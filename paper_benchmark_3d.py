@@ -16,13 +16,12 @@ from scpic.fields import (
     LinearPolarisedSuperGaussian3D,
     TM01RadiallyPolarisedBeam3D,
 )
+from scpic.broadband import propagate_broadband_3d
 from scpic.mirrors import ParabolicMirror3D
 from scpic.pulse import (
     SuperGaussianSpectrum,
     electric_intensity,
-    reconstruct_analytic_signal,
 )
-from scpic.solvers import evaluate_SC_3D
 
 INCIDENT_FWHM = 200e-3
 SPATIAL_ORDER = 16
@@ -150,34 +149,17 @@ def _axial_observations(mirror_type, coordinate, offset_x, offset_y):
     )
 
 
-def _propagate_components(
-    observations, mirror, surface, incident, spectrum, amplitudes
-):
-    components = np.empty(
-        (len(spectrum.angular_frequencies), len(observations), 3), dtype=complex
+def _propagate_components(observations, mirror, surface, incident, spectrum):
+    propagated = propagate_broadband_3d(
+        observations,
+        surface,
+        incident,
+        spectrum,
+        [0.0],
+        # The parent-paraboloid optical path to the focus is 2*f0.
+        propagation_phase=lambda k: -2 * k * mirror.f0,
     )
-    for index, (omega, amplitude) in enumerate(
-        zip(spectrum.angular_frequencies, amplitudes)
-    ):
-        k = omega / C
-        electric_incident, magnetic_incident = incident.fields(
-            surface.points,
-            k=k,
-            amplitude=amplitude,
-            # The parent-paraboloid optical path to the focus is 2*f0.
-            spectral_phase=-2 * k * mirror.f0,
-        )
-        components[index], _ = evaluate_SC_3D(
-            observations,
-            surface,
-            electric_incident,
-            magnetic_incident,
-            k,
-        )
-    analytic = reconstruct_analytic_signal(
-        components, spectrum.angular_frequencies, [0.0]
-    )[0]
-    return electric_intensity(analytic)
+    return electric_intensity(propagated.electric[0])
 
 
 def run_case(
@@ -217,7 +199,6 @@ def run_case(
         surface,
         incident,
         spectrum,
-        amplitudes,
     )
     intensity_x = transverse_intensity[:n_profile]
     intensity_y = transverse_intensity[n_profile:]
@@ -236,7 +217,6 @@ def run_case(
         surface,
         incident,
         spectrum,
-        amplitudes,
     )
 
     computed = {

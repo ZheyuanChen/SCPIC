@@ -24,6 +24,28 @@ but not currently a reusable public dependency.
 - Jolly *et al.*, *Nanophotonics* (2025),
   <https://doi.org/10.1515/nanoph-2024-0616>
 
+### Fourmaux transmission-parabola experiment (2025)
+
+Fourmaux *et al.* provide the first experimental case in this review that is
+directly actionable as a geometry preset. They used the same Stratton--Chu
+lineage to infer focal fields from a measured wavefront for an NA = 0.96
+transmission parabola: 5.65 mm parent focal length, 65 mm illuminated diameter,
+and 24.5 mm central opening. A second identical TP collected the focused light
+for wavefront sensing relative to a pinhole reference. Deformable-mirror
+correction improved the measured wavefront from 9.3 wavelengths peak-to-valley
+and 2.13 wavelengths RMS to 1.02 and 0.16 wavelengths, while the calculated
+peak rose from 6% to 68.1% of the ideal field.
+
+This strongly supports SCPIC's measured-OPD and Zernike workflow and shows that
+ideal-mirror intensity alone is not an adequate experimental prediction.
+However, the phase maps and Zernike coefficients are not publicly available;
+the paper states that underlying data may be requested from the authors. The
+published geometry is therefore a regression target, whereas the aberrated
+intensity maps are not yet independently reproducible.
+
+- Fourmaux *et al.*, *Optics Letters* 50, 7027 (2025),
+  <https://doi.org/10.1364/OL.576854>
+
 ### Nielsen's GPU laser--electron package (2022)
 
 C. F. Nielsen published an MIT-licensed C++/CUDA package alongside a Monte
@@ -90,3 +112,6 @@ parallel. The present package still occupies a useful niche: a small,
 inspectable Python implementation tied directly to EPOCH's custom injection
 format, with an explicit 2D reduction, a full 3D vector path, and regression
 benchmarks against Vallières *et al.*
+The Fourmaux experiment additionally supplies a realistic TP geometry and a
+clear measured-wavefront use case, while reinforcing that experimental phase
+data must accompany peak-intensity claims.

@@ -1,7 +1,7 @@
 from math import factorial
 
 import numpy as np
-from scipy.special import gamma
+from scipy.special import eval_laguerre, gamma
 
 C = 299_792_458.0
 
@@ -378,6 +378,182 @@ class TM01RadiallyPolarisedBeam3D(_SuperGaussian3D):
             :, None
         ] * self.direction
         electric = scalar[:, None] * (transverse + longitudinal_term)
+        magnetic = np.cross(self.direction, electric) / C
+        return electric, magnetic
+
+
+class FiniteRayleighTM01Beam3D(TM01RadiallyPolarisedBeam3D):
+    """Finite-Rayleigh-range radial Gaussian from Dumont et al. (2017).
+
+    The beam waist is centred at ``centre`` and the signed propagation
+    coordinate increases along ``direction``.  This retains the complex
+    ``q`` dependence, wavefront curvature and longitudinal electric field of
+    Eqs. (7a)--(7c) in Dumont's supplementary material.  At the waist it is
+    exactly :class:`TM01RadiallyPolarisedBeam3D` with the same amplitude.
+    """
+
+    def fields(self, points, *, k=None, amplitude=None, spectral_phase=0.0):
+        points = np.asarray(points, dtype=float)
+        if points.ndim != 2 or points.shape[1] != 3:
+            raise ValueError("points must have shape (n, 3)")
+        if k is None:
+            k = self.k
+        if k is None or k <= 0:
+            raise ValueError("a positive wavenumber is required")
+        if amplitude is None:
+            amplitude = self.E0
+
+        relative = points - self.centre
+        longitudinal = relative @ self.direction
+        transverse = relative - longitudinal[:, None] * self.direction
+        radius_squared = np.sum(transverse**2, axis=1)
+        rayleigh_range = k * self.w0**2 / 2
+        q = 1 / (1 - 1j * longitudinal / rayleigh_range)
+        phase_argument = k * longitudinal + spectral_phase
+        if self.wavefront_opd is not None:
+            opd = np.asarray(self.wavefront_opd(points), dtype=float)
+            if opd.shape != (len(points),) or not np.all(np.isfinite(opd)):
+                raise ValueError("wavefront_opd must return one finite value per point")
+            phase_argument = phase_argument + k * opd
+
+        common = amplitude * np.exp(
+            -q * radius_squared / self.w0**2 + 1j * phase_argument
+        )
+        transverse_coefficient = 2 * q**2 / (k * self.w0**2)
+        longitudinal_coefficient = (
+            4j / (k**2 * self.w0**2) * (q**2 - q**3 * radius_squared / self.w0**2)
+        )
+        electric = common[:, None] * (
+            transverse_coefficient[:, None] * transverse
+            + longitudinal_coefficient[:, None] * self.direction
+        )
+        magnetic = np.cross(self.direction, electric) / C
+        return electric, magnetic
+
+
+class ParaxialGaussLaguerreBeam3D:
+    """Axisymmetric finite-distance Gauss--Laguerre incident beam.
+
+    This implements Eq. (9) of the Dumont et al. supplementary material as
+    a linearly polarised paraxial field. ``mode_coefficients`` maps the
+    non-negative radial mode number ``n`` to a complex coefficient ``c_n``.
+    It is intended for a well-collimated upstream field; longitudinal
+    corrections of order the divergence angle are not added.
+    """
+
+    def __init__(
+        self,
+        w0,
+        mode_coefficients=(1.0,),
+        *,
+        wavelength=None,
+        E0=1.0,
+        direction=(0.0, 0.0, -1.0),
+        polarisation=(1.0, 0.0, 0.0),
+        centre=(0.0, 0.0, 0.0),
+        wavefront_opd=None,
+    ):
+        if w0 <= 0:
+            raise ValueError("w0 must be positive")
+        if wavelength is not None and wavelength <= 0:
+            raise ValueError("wavelength must be positive")
+        direction = np.asarray(direction, dtype=float)
+        polarisation = np.asarray(polarisation, dtype=float)
+        centre = np.asarray(centre, dtype=float)
+        if (
+            direction.shape != (3,)
+            or polarisation.shape != (3,)
+            or centre.shape != (3,)
+        ):
+            raise ValueError("direction, polarisation, and centre must be 3-vectors")
+        if np.linalg.norm(direction) == 0 or np.linalg.norm(polarisation) == 0:
+            raise ValueError("direction and polarisation must be non-zero")
+        direction = direction / np.linalg.norm(direction)
+        polarisation = polarisation / np.linalg.norm(polarisation)
+        if not np.isclose(np.dot(direction, polarisation), 0.0, atol=1e-12):
+            raise ValueError("polarisation must be perpendicular to direction")
+        if wavefront_opd is not None and not callable(wavefront_opd):
+            raise TypeError("wavefront_opd must be callable")
+
+        if isinstance(mode_coefficients, dict):
+            items = mode_coefficients.items()
+        else:
+            items = enumerate(mode_coefficients)
+        modes = {}
+        for mode, coefficient in items:
+            if not isinstance(mode, (int, np.integer)) or mode < 0:
+                raise ValueError(
+                    "Gauss--Laguerre mode numbers must be non-negative integers"
+                )
+            coefficient = complex(coefficient)
+            if not np.isfinite(coefficient.real) or not np.isfinite(coefficient.imag):
+                raise ValueError("mode coefficients must be finite")
+            if coefficient != 0:
+                modes[int(mode)] = coefficient
+        if not modes:
+            raise ValueError("at least one mode coefficient must be non-zero")
+
+        self.w0 = float(w0)
+        self.wavelength = wavelength
+        self.k = None if wavelength is None else 2 * np.pi / wavelength
+        self.E0 = complex(E0)
+        self.direction = direction
+        self.polarisation = polarisation
+        self.centre = centre
+        self.mode_coefficients = modes
+        self.wavefront_opd = wavefront_opd
+
+    @property
+    def effective_area(self):
+        """Return the conserved transverse-flux area relative to ``E0``."""
+        modal_norm = sum(abs(value) ** 2 for value in self.mode_coefficients.values())
+        return np.pi * self.w0**2 / 2 * modal_norm
+
+    def fields(self, points, *, k=None, amplitude=None, spectral_phase=0.0):
+        points = np.asarray(points, dtype=float)
+        if points.ndim != 2 or points.shape[1] != 3:
+            raise ValueError("points must have shape (n, 3)")
+        if k is None:
+            k = self.k
+        if k is None or k <= 0:
+            raise ValueError("a positive wavenumber is required")
+        if amplitude is None:
+            amplitude = self.E0
+
+        relative = points - self.centre
+        longitudinal = relative @ self.direction
+        transverse = relative - longitudinal[:, None] * self.direction
+        radius_squared = np.sum(transverse**2, axis=1)
+        rayleigh_range = k * self.w0**2 / 2
+        width = self.w0 * np.sqrt(1 + (longitudinal / rayleigh_range) ** 2)
+        argument = 2 * radius_squared / width**2
+        modal_sum = np.zeros(len(points), dtype=complex)
+        for mode, coefficient in self.mode_coefficients.items():
+            modal_sum += coefficient * eval_laguerre(mode, argument)
+
+        curvature_phase = (
+            k
+            * radius_squared
+            * longitudinal
+            / (2 * (longitudinal**2 + rayleigh_range**2))
+        )
+        gouy_phase = np.arctan(longitudinal / rayleigh_range)
+        phase_argument = (
+            k * longitudinal + curvature_phase - gouy_phase + spectral_phase
+        )
+        if self.wavefront_opd is not None:
+            opd = np.asarray(self.wavefront_opd(points), dtype=float)
+            if opd.shape != (len(points),) or not np.all(np.isfinite(opd)):
+                raise ValueError("wavefront_opd must return one finite value per point")
+            phase_argument = phase_argument + k * opd
+        scalar = (
+            amplitude
+            * self.w0
+            / width
+            * modal_sum
+            * np.exp(-radius_squared / width**2 + 1j * phase_argument)
+        )
+        electric = scalar[:, None] * self.polarisation
         magnetic = np.cross(self.direction, electric) / C
         return electric, magnetic
 

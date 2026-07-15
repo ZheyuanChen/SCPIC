@@ -4,8 +4,10 @@ SCPIC (Stratton-Chu for Particle-in-Cell simulations) computes two-dimensional T
 fields reflected by parabolic mirrors, then exports transverse electric-field
 profiles for the custom laser reader in the modified EPOCH checkout. The 3D
 path follows the physical-optics Stratton--Chu method of Vallières *et al.*
-(2023) and supports OAP90, on-axis and annular transmission-parabola apertures.
-The code also borrows from C. F. Nielsen (2022).
+(2023) and Dumont *et al.* (2017), with implementation insights from
+C. F. Nielsen (2022). It supports OAP90, on-axis and annular
+transmission-parabola apertures, including the NA = 0.96 experimental geometry
+reported by Fourmaux *et al.* (2025).
 
 The code uses one complex convention throughout:
 
@@ -28,6 +30,10 @@ python -m venv .venv
 .venv/bin/python paper_benchmark_3d.py --suite
 .venv/bin/python paper_benchmark_3d.py --convergence --mirror OAP90 --polarisation radial
 ```
+
+Install `'.[dev,mpi]'` instead when using the optional mpi4py observation-domain
+workflow. CuPy remains a separate installation because it must match the local
+CUDA runtime.
 
 The first benchmark checks the 2D PEC physical-optics solution against an
 analytical paraxial Gaussian waist. The second reconstructs all six 20 J,
@@ -99,10 +105,107 @@ transverse radial envelope; it is not the paper's TM01 model. Any callable
 returning one finite OPD value per point can replace `ZernikeWavefront`,
 allowing measured maps to be interpolated onto the mirror.
 
-For large observation grids, `evaluate_SC_3D(..., backend="cupy")` uses a
-locally installed CuPy build and transfers one observation chunk at a time to
-the GPU. CuPy must be installed separately to match the machine's CUDA
-version; the default NumPy path remains the tested reference implementation.
+## Dumont broadband and finite-distance extensions
+
+The Vallières-compatible narrow-band wavelength conversion remains the default.
+For a very broad spectrum defined as energy per unit wavelength, request the
+exact Jacobian explicitly. Spectral phase may be a scalar, an array, or a
+callable of angular frequency:
+
+```python
+from scpic import SuperGaussianSpectrum
+
+spectrum = SuperGaussianSpectrum.from_wavelength_bandwidth(
+    central_wavelength=800e-9,
+    wavelength_fwhm=150e-9,
+    total_energy=20.0,
+    conversion="exact_wavelength_density",
+).with_spectral_phase(lambda omega: 1.0e-29 * (omega - omega.mean()) ** 2)
+```
+
+`SampledSpectrum.from_wavelength_samples()` accepts measured `dE/dlambda`
+data, applies `|dlambda/domega|`, and resamples it onto the uniform angular-
+frequency grid required by the discrete Fourier representation.
+
+`FiniteRayleighTM01Beam3D` implements Dumont's complex-q radial Gaussian,
+including curvature and the longitudinal electric field. It reduces exactly
+to `TM01RadiallyPolarisedBeam3D` at its waist. The complementary
+`ParaxialGaussLaguerreBeam3D` accepts an axisymmetric set of radial
+Gauss--Laguerre coefficients for a linearly polarised, well-collimated beam.
+The latter is a paraxial upstream model and deliberately does not claim
+high-order longitudinal corrections.
+
+## Memory-bounded propagation and convergence
+
+`iter_broadband_field_chunks()` calculates all frequencies for one observation
+chunk, reconstructs the requested times, yields the result, and discards the
+spectral intermediates. This bounds working memory by the chunk size rather
+than the complete injection plane or focal volume. `propagate_broadband_3d()`
+collects those chunks when the reconstructed local result fits in memory.
+
+An mpi4py communicator can be supplied without changing the numerical kernel:
+
+```python
+from mpi4py import MPI
+from scpic import iter_broadband_field_chunks
+
+for chunk in iter_broadband_field_chunks(
+    observations,
+    surface,
+    incident,
+    spectrum,
+    times=[0.0],
+    communicator=MPI.COMM_WORLD,
+):
+    # Each rank receives a disjoint, globally indexed [chunk.start:chunk.stop].
+    write_rank_chunk(chunk)
+```
+
+No MPI collective or parallel file format is imposed. This avoids recreating
+the HDF5 output bottleneck reported by Dumont and lets campaigns use per-rank
+files, a later assembly step, or a site-specific parallel writer.
+
+`surface_quadrature_convergence()` refines mirror quadrature against the full
+requested observation grid using a combined `(E, cB)` norm. For an EPOCH
+profile, run it on the actual injection plane at the shortest relevant
+wavelength; focal-point convergence alone can be misleading away from the
+parabolic focus.
+
+The diagnostics module now provides:
+
+- monochromatic and time-domain source-free Maxwell residuals;
+- cycle-averaged or instantaneous electromagnetic energy density;
+- rectilinear volume-energy and plane-Poynting-flux integrals;
+- a signed relative energy-conservation error.
+
+An energy-conservation volume must be demonstrated to be large enough. Dumont
+found that longitudinal-field tails can require extents of roughly 25
+wavelengths, and expanding that volume can in turn require finer mirror
+quadrature.
+
+## Experimental transmission parabola (2025)
+
+`ParabolicMirror3D.fourmaux_tp_2025()` returns the published 5.65 mm parent
+focal length, 65 mm illuminated diameter and 24.5 mm central aperture. The
+derived acute focusing-angle range is 38.3--85.4 degrees, corresponding to the
+reported generalized-solid-angle NA of 0.96.
+
+Fourmaux *et al.* measured 9.3 wavelengths peak-to-valley and 2.13 wavelengths
+RMS before deformable-mirror correction, and 1.02 and 0.16 wavelengths after
+correction. Their Stratton--Chu calculation reached 6% and 68.1% of the ideal
+peak respectively. The phase maps and fitted Zernike coefficients are not
+publicly available, so SCPIC includes the geometry and measured-wavefront input
+path but does not present those intensity ratios as reproduced benchmarks.
+The solver remains a perfect-conductor physical-optics model. For a direct
+comparison with this experiment, the spectrum energy should be specified after
+the paper's reported 2.5% gold-coating reflection loss (or an equivalent
+frequency-dependent coating transfer should be applied externally).
+
+For large individual observation chunks,
+`evaluate_SC_3D(..., backend="cupy")` uses a locally installed CuPy build and
+transfers one observation chunk at a time to the GPU. CuPy must be installed
+separately to match the machine's CUDA version; the default NumPy path remains
+the tested reference implementation.
 
 See [`docs/methodology_3d.md`](docs/methodology_3d.md) for equations,
 conventions, benchmark results and current limitations. The existing-code

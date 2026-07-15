@@ -253,3 +253,73 @@ Six reduced-resolution paper regressions have been added to the test suite,
 alongside direct tests of the TM01 equations, mirror dimensions and broadband
 energy recovery. The standalone 2D TM reduction and the EPOCH export paths are
 unchanged by this phase.
+
+---
+
+## Phase 11: Dumont Pulse Extensions and Experimental TP Geometry (July 2026)
+
+Dumont *et al.* (2017), including its four-page supplementary material, was
+revisited as an implementation source rather than only a derivation reference.
+The continuous-frequency normalization with an explicit frequency increment
+was compared against SCPIC's periodic discrete representation. The two are
+equivalent when `T = 2*pi/delta_omega` is used consistently. Dumont's analytic
+linear and radial energy factors also give the same relative effective areas
+already implemented in SCPIC. This independently supports the existing TM01
+normalization and does not explain the remaining 5--8% Vallières radial peak
+difference.
+
+The following additions were made without changing Vallières-compatible
+defaults:
+
+* `SuperGaussianSpectrum` now carries arbitrary spectral phase and can return
+  complex component coefficients. Its default narrow-band wavelength
+  conversion is unchanged, while `conversion="exact_wavelength_density"`
+  applies the exact `|dlambda/domega|` Jacobian for large bandwidths.
+* `SampledSpectrum` accepts measured energy density in either angular
+  frequency or wavelength, unwraps/interpolates spectral phase, and resamples
+  onto the uniform angular-frequency grid required by reconstruction. The
+  period, optical-carrier Nyquist step and explicit time-grid validation are
+  exposed.
+* `FiniteRayleighTM01Beam3D` implements Dumont's complex-q radially polarised
+  Gaussian, including curvature and the longitudinal electric field. It is
+  numerically identical to `TM01RadiallyPolarisedBeam3D` at the waist.
+* `ParaxialGaussLaguerreBeam3D` implements the axisymmetric radial-mode
+  expansion of the supplement for linearly polarised, well-collimated input.
+  Complex modal coefficients and the orthogonality-derived effective area are
+  supported. Its paraxial limitation is explicit.
+* `iter_broadband_field_chunks` limits spectral working storage to one
+  observation chunk. Supplying an mpi4py communicator partitions observations
+  into balanced contiguous rank-local ranges without forcing a collective
+  output format. `paper_benchmark_3d.py` now uses this path.
+* `surface_quadrature_convergence` refines the mirror against the complete
+  observation set and uses a combined `(E,cB)` relative norm. It is intended
+  to be run at the shortest relevant wavelength on the actual EPOCH injection
+  plane, where the near-focus phase cancellation may be weaker.
+* Diagnostics now cover time-domain Maxwell residuals, electromagnetic energy
+  density, rectilinear volume energy, signed plane Poynting flux, and relative
+  energy error. A production energy check must converge both the integration
+  volume and mirror quadrature; Dumont's roughly 25-wavelength extent is a
+  starting point rather than a hard universal value.
+
+The 2025 Fourmaux *et al.* paper, *High peak intensity characterization and
+optimization with a tight-focusing transmission parabola*, was also reviewed
+from the supplied five-page article. `ParabolicMirror3D.fourmaux_tp_2025()`
+encodes its 5.65 mm parent focal length, 65 mm illuminated diameter, and
+24.5 mm central opening. The derived 38.3--85.4 degree ray-angle interval
+matches the publication and corresponds to generalized-solid-angle NA 0.96.
+
+The experiment is strong evidence for the measured-OPD workflow: deformable-
+mirror correction changed the measured wavefront from 9.3 wavelengths
+peak-to-valley and 2.13 wavelengths RMS to 1.02 and 0.16 wavelengths, and the
+authors' Stratton--Chu peak rose from 6% to 68.1% of ideal. However, the phase
+maps and fitted Zernike coefficients are not public. SCPIC therefore records
+the geometry and can ingest those data through `ZernikeWavefront` or an OPD
+callable, but does not claim to reproduce the two aberrated intensity maps.
+
+Nine new focused regressions cover the wavelength Jacobian, spectral phase,
+finite-Rayleigh waist limit, Gauss--Laguerre power conservation, Fourmaux
+geometry, time-domain Maxwell equations, energy/flux factors, chunked
+broadband equivalence, observation partitioning and whole-grid convergence.
+The complete local suite passes with 41 tests. GPU execution, multi-rank MPI
+I/O and a large 25-wavelength focused-volume energy calculation remain runtime
+validation tasks for suitable hardware; they are not inferred from unit tests.

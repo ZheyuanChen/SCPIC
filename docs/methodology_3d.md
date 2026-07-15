@@ -5,8 +5,9 @@
 The 3D path implements the linearly and radially polarised,
 perfect-conductor physical-optics method used by Vallières *et al.* (2023),
 building on Dumont *et al.* (2017).
-It accepts an upstream collimated super-Gaussian beam, evaluates the reflected
-vector field on an arbitrary observation grid, and reconstructs an
+It accepts collimated super-Gaussian, finite-Rayleigh radial Gaussian, and
+axisymmetric paraxial Gauss--Laguerre upstream beams; evaluates the reflected
+vector field on an arbitrary observation grid; and reconstructs an
 energy-normalised broadband pulse. The original 2D TM solver remains available
 as a separate reduced model.
 
@@ -105,6 +106,27 @@ OSA/ANSI modes on a user-defined pupil: coefficients are RMS OPD in metres,
 positive azimuthal index uses cosine dependence, and negative index uses sine
 dependence. An arbitrary callable can instead interpolate measured data.
 
+For a radially polarised Gaussian whose waist is not on the mirror,
+`FiniteRayleighTM01Beam3D` retains Dumont *et al.*'s complex beam parameter
+
+\[
+q(s)=\frac{1}{1-is/z_R},\qquad z_R=kw_0^2/2,
+\]
+
+where \(s\) increases along the propagation direction. Its radial and
+longitudinal fields reduce exactly to `TM01RadiallyPolarisedBeam3D` at
+\(s=0\). `ParaxialGaussLaguerreBeam3D` implements Dumont's axisymmetric
+Gauss--Laguerre expansion for linearly polarised, well-collimated input. Its
+mode coefficients are complex and its effective area follows Laguerre
+orthogonality,
+
+\[
+A_{\rm eff}=\frac{\pi w_0^2}{2}\sum_n|c_n|^2.
+\]
+
+This second model is explicitly paraxial: it does not add longitudinal
+corrections beyond the published approximation.
+
 `SuperGaussianSpectrum` samples the order-seven 90 nm FWHM spectrum around
 800 nm. For uniform angular-frequency spacing, \(T=2\pi/\Delta\omega\), and
 the component amplitudes are normalised so that
@@ -116,6 +138,23 @@ E_L=T\sum_n\int 2\epsilon_0c|E_n|^2dA.
 The analytic signal is \(2\sum_n\mathbf E_n e^{-i\omega_nt}\), and its
 instantaneous envelope intensity is
 \(I=\epsilon_0c|\widetilde{\mathbf E}|^2/2\).
+
+The default `conversion="narrowband"` preserves the Vallières construction.
+For spectra defined in wavelength, `conversion="exact_wavelength_density"`
+uses
+
+\[
+\frac{dE}{d\omega}=\frac{dE}{d\lambda}
+\left|\frac{d\lambda}{d\omega}\right|,
+\qquad
+\left|\frac{d\lambda}{d\omega}\right|=\frac{2\pi c}{\omega^2}.
+\]
+
+`SampledSpectrum` applies the same conversion to measured data and interpolates
+onto a uniform angular-frequency grid. Both spectrum classes carry arbitrary
+spectral phase \(\phi(\omega)\); the component coefficients are
+\(E_{0n}\exp[i\phi(\omega_n)]\). The discrete period and optical-carrier
+Nyquist step are exposed so a requested time grid can be checked for aliasing.
 
 ## Numerical backends and field diagnostics
 
@@ -131,6 +170,34 @@ and curl equations for monochromatic phasors on a regular Cartesian volume.
 On the small HNAP regression grid, all four residuals are below 3%; this limit
 includes second-order finite-difference and surface-quadrature error rather
 than representing an exact analytic tolerance.
+
+`iter_broadband_field_chunks()` retains spectral fields only for one
+observation chunk, reconstructs every requested time, and yields the globally
+indexed result. If an mpi4py communicator is supplied, balanced contiguous
+observation ranges are assigned by rank; no collective output or mpi4py import
+is forced by the library. This is Dumont's observation-domain decomposition
+with an output policy suitable for EPOCH plane files and avoids making
+parallel HDF5 a mandatory bottleneck.
+
+`surface_quadrature_convergence()` compares successive quadratures on the
+complete requested observation grid. Its primary error measure is
+
+\[
+\frac{\lVert(\Delta\mathbf E,c\Delta\mathbf B)\rVert_2}
+{\lVert(\mathbf E,c\mathbf B)\rVert_2},
+\]
+
+which remains meaningful when one field vanishes at a symmetry point. The
+shortest relevant wavelength and actual injection plane should be used because
+the favourable parabolic phase cancellation weakens away from the focus.
+
+`time_domain_maxwell_residuals()` applies all four vacuum equations to sampled
+fields with shape `(nt,nx,ny,nz,3)`. Energy diagnostics integrate either the
+cycle-averaged complex-field density or instantaneous real-field density over
+a rectilinear volume, and integrate signed Poynting flux through a plane.
+Energy conservation is meaningful only after both the observation extent and
+mirror quadrature have converged. Dumont reported that roughly 25-wavelength
+extents may be necessary because longitudinal components have long tails.
 
 ## Reproduction status
 
@@ -159,3 +226,26 @@ StrattoCalculator. The residual 5--8% TM01 peak difference is not a numerical
 convergence error at these settings and may reflect unpublished discretisation
 or normalisation details. Measured-wavefront studies still require their own
 map-interpolation and aperture convergence checks.
+
+## Fourmaux 2025 transmission-parabola experiment
+
+`ParabolicMirror3D.fourmaux_tp_2025()` represents the experimental optic in
+Fourmaux *et al.*, *Optics Letters* 50, 7027 (2025): \(f_0=5.65\) mm, a
+65 mm illuminated outer diameter, and a 24.5 mm central opening. These values
+give the reported acute ray-angle interval 38.3--85.4 degrees and generalized
+solid-angle NA 0.96.
+
+The paper reports that deformable-mirror correction changed the measured
+wavefront from 9.3 wavelengths peak-to-valley and 2.13 wavelengths RMS to 1.02
+wavelengths and 0.16 wavelengths. Their Stratton--Chu peak changed from 6% to
+68.1% of the ideal case. The underlying phase maps and fitted Zernike
+coefficients are explicitly not public, so those ratios cannot be an
+independent deterministic regression for SCPIC at present. The existing
+`ZernikeWavefront` and arbitrary OPD callable APIs are ready to ingest the data
+if obtained from the authors.
+
+The geometry preset does not silently fold experimental throughput into the
+perfect-conductor integral. Fourmaux reports a 2.5% reflection energy loss from
+the gold coating; comparisons should therefore use energy at the reflecting
+field after that loss, or apply a separately characterised spectral coating
+transfer.
