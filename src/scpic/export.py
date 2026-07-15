@@ -1,41 +1,112 @@
+"""Export complex SCPIC phasors for EPOCH-mod custom laser injection."""
+
+from dataclasses import dataclass
+from pathlib import Path
+
 import numpy as np
-import os
+
+
+@dataclass(frozen=True)
+class EpochProfileExport:
+    """Metadata needed to configure the matching EPOCH laser block."""
+
+    amplitude_file: Path
+    phase_file: Path
+    shape: tuple[int, ...]
+    field_scale: float
+
+
+def epoch_amplitude_phase(field, *, field_scale=None, phase_reference=0.0):
+    """Convert an SCPIC phasor to normalised EPOCH amplitude and phase.
+
+    SCPIC uses ``Re[F exp(-i omega t)]`` while EPOCH-mod injects
+    ``A sin(omega t + phase)``.  Consequently the phase written to EPOCH is
+    ``pi/2 - (angle(F) - phase_reference)``.  ``field_scale`` is the EPOCH
+    laser's peak electric-field amplitude; if omitted, the peak magnitude of
+    ``field`` is used.  Returned amplitudes are therefore in ``[0, 1]``.
+    """
+    field = np.asarray(field)
+    if field.ndim not in {1, 2, 3}:
+        raise ValueError("an EPOCH profile must be a 1D, 2D, or 3D array")
+    if field.size == 0 or not np.all(np.isfinite(field)):
+        raise ValueError("field must be non-empty and finite")
+
+    phase_reference = float(phase_reference)
+    if not np.isfinite(phase_reference):
+        raise ValueError("phase_reference must be finite")
+
+    magnitude = np.abs(field)
+    peak = float(np.max(magnitude))
+    if field_scale is None:
+        field_scale = peak
+    field_scale = float(field_scale)
+    if not np.isfinite(field_scale) or field_scale <= 0:
+        raise ValueError("field_scale must be finite and positive")
+    if peak > field_scale * (1.0 + 10 * np.finfo(float).eps):
+        raise ValueError("field_scale is smaller than the field's peak magnitude")
+
+    amplitude = magnitude / field_scale
+    phase = np.pi / 2 - (np.angle(field) - phase_reference)
+    phase = (phase + np.pi) % (2 * np.pi) - np.pi
+    phase = np.where(magnitude == 0, 0.0, phase)
+    return amplitude.astype(np.float64), phase.astype(np.float64), field_scale
+
+
+def export_epoch_profile(
+    directory,
+    field,
+    *,
+    field_scale=None,
+    phase_reference=0.0,
+    amplitude_filename="amplitude.dat",
+    phase_filename="phase.dat",
+):
+    """Write a headerless EPOCH-mod profile pair as native float64 streams.
+
+    Arrays are written in NumPy C order.  This directly matches EPOCH-mod's
+    Fortran arrays when the NumPy axes are ordered as documented there:
+    ``(n_y,)`` for 2D static data, ``(n_t, n_y)`` for 2D spatiotemporal
+    data, ``(n_tr2, n_tr1)`` for 3D static data, and
+    ``(n_t, n_tr2, n_tr1)`` for 3D spatiotemporal data.
+    """
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    amplitude, phase, field_scale = epoch_amplitude_phase(
+        field, field_scale=field_scale, phase_reference=phase_reference
+    )
+    amplitude_file = directory / amplitude_filename
+    phase_file = directory / phase_filename
+    np.ascontiguousarray(amplitude, dtype=np.float64).tofile(amplitude_file)
+    np.ascontiguousarray(phase, dtype=np.float64).tofile(phase_file)
+    return EpochProfileExport(
+        amplitude_file=amplitude_file,
+        phase_file=phase_file,
+        shape=amplitude.shape,
+        field_scale=field_scale,
+    )
+
 
 def export_field_binary(filepath_base, field_array, dtype=np.float64):
-    """
-    Exports a complex field array into two raw binary files:
-    1. A file containing the amplitude: <filepath_base>_amp.bin
-    2. A file containing the phase: <filepath_base>_phase.bin
-    
-    Parameters:
-    - filepath_base: Base path/name of the file (e.g., 'workspace/Ex')
-    - field_array: Complex-valued NumPy array of the field
-    - dtype: Precision to write (np.float64 for double, np.float32 for single)
-    """
-    # Ensure directories exist
-    os.makedirs(os.path.dirname(filepath_base), exist_ok=True)
-    
-    # Extract amplitude and phase
-    amplitude = np.abs(field_array).astype(dtype)
-    phase = np.angle(field_array).astype(dtype)
-    
-    # Define filenames
-    amp_filename = f"{filepath_base}_amp.bin"
-    phase_filename = f"{filepath_base}_phase.bin"
-    
-    # Write raw binary files
-    # Note: NumPy's tofile() writes raw C-contiguous memory.
-    # If your Fortran compiler expects big-endian, use field_array.byteswap() first.
-    amplitude.tofile(amp_filename)
-    phase.tofile(phase_filename)
-    
-    print(f"Exported: {amp_filename}")
-    print(f"Exported: {phase_filename}")
+    """Backward-compatible wrapper for the old ``*_amp.bin`` interface.
 
-def export_all_fields(directory, Ex, Ez, By, dtype=np.float64):
+    EPOCH-mod only accepts 64-bit values, so other dtypes are rejected.  New
+    code should use :func:`export_epoch_profile`, which also returns the
+    electric-field scale required by the deck.
     """
-    Convenience function to dump all 2D TM fields to the target directory.
-    """
-    export_field_binary(os.path.join(directory, "Ex"), Ex, dtype)
-    export_field_binary(os.path.join(directory, "Ez"), Ez, dtype)
-    export_field_binary(os.path.join(directory, "By"), By, dtype)
+    if np.dtype(dtype) != np.dtype(np.float64):
+        raise ValueError("epoch_dev requires native float64 profile data")
+    base = Path(filepath_base)
+    return export_epoch_profile(
+        base.parent,
+        field_array,
+        amplitude_filename=f"{base.name}_amp.bin",
+        phase_filename=f"{base.name}_phase.bin",
+    )
+
+
+def export_all_fields(*args, **kwargs):
+    """Reject the obsolete volume-field export with an actionable message."""
+    raise RuntimeError(
+        "EPOCH's custom laser reader accepts one transverse electric-field "
+        "profile, not Ex/Ez/By volume dumps; use export_epoch_profile()"
+    )

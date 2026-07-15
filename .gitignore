@@ -27,7 +27,9 @@ dist/
 # Generated SCPIC/EPOCH data and local run output
 epoch_injection_data/
 epoch_tests/runs/
+epoch_tests/cases/*/*.dat
 *.sdf
+benchmark_results.png
 
 # Local EPOCH build products
 epoch_dev/

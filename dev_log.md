@@ -29,10 +29,10 @@ Implemented the `ParabolicMirror2D` class to handle standard parent parabola cal
 *   Extracts local differential line elements `dl = sqrt(dx^2 + dz^2)` for numerical integration.
 
 ### 3. Incident Field Module (`fields.py`)
-Implemented `IncidentFieldTM` to model the incoming laser beam traveling along the +z-axis.
+Implemented `IncidentFieldTM` to model the incoming laser beam travelling along the -z-axis.
 *   Models a 2D Gaussian spatial profile: 
 
-$$B_y(x, z) = B_0 \exp\left(-\frac{(x - x_c)^2}{w_0^2}\right) e^{i k z}$$
+$$B_y(x, z) = B_0 \exp\left(-\frac{(x - x_c)^2}{w_0^2}\right) e^{-i k z}$$
 
 *   Calculates analytical spatial derivatives to provide `∂B_y/∂n = n_x * ∂B_y/∂x + n_z * ∂B_y/∂z` directly on the mirror surface, eliminating numerical error on the boundary.
 
@@ -40,19 +40,18 @@ $$B_y(x, z) = B_0 \exp\left(-\frac{(x - x_c)^2}{w_0^2}\right) e^{i k z}$$
 
 ## Phase 2: Numerical Integration Core (`solvers.py`)
 
-*   Implemented the Stratton-Chu boundary integrator `evaluate_SC_2D`.
-*   To resolve the computational bottleneck of evaluating expensive Hankel functions (H_0^(1) and H_1^(1)) for every observation grid point relative to every mirror element, we integrated **Numba**-accelerated JIT compilation.
-*   Designed the solver with a parallelized CPU pipeline (`numba.njit(parallel=True)`) to scale execution across multi-core systems efficiently.
+*   Implemented the Stratton-Chu boundary integrator `evaluate_SC_2D` using SciPy's Hankel functions.
+*   The reflecting-mirror path now applies the PEC physical-optics boundary values, $B_{y,\mathrm{surface}} = 2B_{y,\mathrm{inc}}$ and $\partial B_y/\partial n = 0$. The earlier implementation inserted incident values into a generic Kirchhoff representation and mostly reconstructed the incoming field rather than the reflected field.
+*   Mirror integration uses trapezoidal arc-length weights. The solver is currently a clear serial reference implementation; Numba acceleration remains future work rather than a completed feature.
 
 ---
 
 ## Phase 3: Binary Export Pipeline (`export.py`)
 
 *   **Format Shift (HDF5 to Raw Binary):** Transitioned the output module from complex HDF5 files to raw C-style binary streams using NumPy's `ndarray.tofile()`. This eliminates library overhead and directly interfaces with custom Fortran input routines in modified EPOCH setups.
-*   **Amplitude/Phase Splitting:** Complex fields are split into separate real arrays to write out:
-    1.  Amplitude profiles: `<component>_amp.bin` (via `np.abs()`)
-    2.  Phase profiles: `<component>_phase.bin` (via `np.angle()`)
-*   **Precision Control:** Configured precision casting (`np.float32` vs `np.float64`) to match the double or single-precision configuration (`real(4)` or `real(8)`) used by the destination compiler.
+*   **Amplitude/Phase Splitting:** The single transverse electric phasor required by an EPOCH laser block is written as normalised `amplitude.dat` and `phase.dat` streams. EPOCH constructs the associated magnetic field; `Ex/Ez/By` volume dumps are not a supported laser input format.
+*   **Phase conversion:** SCPIC uses $\mathrm{Re}[F e^{-i\omega t}]$, while EPOCH-mod uses $A\sin(\omega t + \phi)$. The exporter therefore writes $\phi_{\mathrm{EPOCH}} = \pi/2 - \arg(F)$, with an optional global phase reference.
+*   **Precision and ordering:** `epoch_dev` hard-codes `REAL(num)` to eight bytes. Files are headerless native `float64` streams in C order; the NumPy axis order is reversed relative to the corresponding Fortran declaration, so no transpose is needed.
 
 ---
 
@@ -92,7 +91,7 @@ SCPIC/
 To verify the physical and mathematical correctness of our Stratton-Chu solver before running simulations inside EPOCH, we designed and executed a dual-regime validation framework.
 
                   Incident Gaussian Beam
-                  (Propagating along +z)
+                  (Propagating along -z)
                             │
                             ▼
                 /───────────────────────\  OAP90 Mirror
@@ -109,12 +108,12 @@ To verify the physical and mathematical correctness of our Stratton-Chu solver b
                  Ez: Transverse Field
 
 ### 1. Paraxial Regime (Weak Focusing Validation)
-* Configuration: Focal length f_0 = 50 μm (effective focal length f_eff = 2 * f_0 = 100 μm), mirror diameter D = 20 μm, and incident beam waist w_inc = 15 μm.
+* Configuration: Focal length f_0 = 200 μm, mirror diameter D = 120 μm, and incident beam waist w_inc = 20 μm. The six-waist aperture suppresses clipping so that the untruncated Gaussian formula is a valid reference.
 * Physical Metric: In this paraxial limit, the focal spot waist must match the analytical 2D paraxial Gaussian beam waist formula:
 
   w_focus ≈ (2 * lambda * f_0) / (pi * w_inc)
 
-* Result: Fitted a Gaussian profile to the transverse E_z field slice at x = 0. The numerical waist agreed with the analytical formula to within < 2% error, validating the integration phase, amplitude scaling, and geometric projection.
+* Result: Fitted a Gaussian profile to the transverse E_z field slice at x = 0. The corrected PEC physical-optics solution agrees with the analytical waist to approximately 0.03%. The original configuration clipped the beam strongly and, combined with the incorrect boundary model, actually gave a 247% error; the earlier <2% entry was not reproducible.
 
 ### 2. Tight-Focusing Regime (Non-Paraxial Validation)
 * Configuration: Focal length f_0 = 10 μm, mirror diameter D = 20 μm, and incident beam waist w_inc = 8 μm (High Numerical Aperture).
@@ -126,8 +125,18 @@ To verify the physical and mathematical correctness of our Stratton-Chu solver b
 
 ## Phase 6: Automated Regression Framework (`tests/`)
 
-* Implemented continuous verification via unit tests (`tests/test_scpic.py`) targeting critical math nodes:
-  * `test_mirror_normal_vectors`: Verifies unit normal vectors conform to sqrt(nx^2 + nz^2) = 1.0.
-  * `test_incident_field_amplitude`: Assures Gaussian spatial peak centers align perfectly at boundaries.
-  * `test_binary_export_structure`: Confirms raw binary file size allocations match expectations and validates structural round-trips.
-  * `test_paraxial_solver_accuracy`: Encapsulates the paraxial waist benchmark into an automated regression gate ensuring code updates never degrade physical precision.
+* Implemented continuous verification via unit tests (`tests/test_scpic.py`) targeting mirror geometry and quadrature, incident-wave direction, Maxwell field recovery, exact time-domain reconstruction of the EPOCH phase convention, float64 stream size and ordering, invalid export parameters, the PEC paraxial waist, and generic Kirchhoff input validation.
+
+---
+
+## Phase 7: EPOCH-mod Compatibility and Local Integration (July 2026)
+
+The exporter was checked directly against `epoch2d/src/user_interaction/custom_laser.f90`, `epoch2d/src/laser.f90`, and `DOCUMENTATION_LASER_INJECTION.tex` in the local `epoch_dev` branch.
+
+Three local cases now live under `epoch_tests/`: a static Gaussian, a phase-ramp sign test, and the full OAP90 focus. All three load and run successfully with both one and two MPI ranks. Quantitative checks on the generated SDF files give:
+
+* static Gaussian field waist: 2.121 μm for a 2.0 μm injected waist; median $E_y/B_z = 3.0394\times10^8$ m/s;
+* phase-ramp integrated Poynting angle: +11.08° for a +10° target;
+* f/1 focused waist at x ≈ 0: 1.126 μm in EPOCH versus 0.944 μm in SCPIC, a 19.3% difference on the initial coarse grid.
+
+The final result is deliberately recorded as a limitation, not a pass at production accuracy. EPOCH's `simple_laser` boundary cannot impose the longitudinal electric component and approximates high-angle content. A grid-convergence and downstream complex-field comparison are required before physics production; an interior current-sheet injector is the preferred fallback if this boundary error remains material.

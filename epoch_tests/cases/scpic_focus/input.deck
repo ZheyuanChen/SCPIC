@@ -1,0 +1,45 @@
+begin:control
+  nx = 240
+  ny = 256
+  t_end = 35 * femto
+  x_min = -5 * micron
+  x_max = 5 * micron
+  y_min = -8 * micron
+  y_max = 8 * micron
+  stdout_frequency = 100
+end:control
+
+begin:boundaries
+  bc_x_min = open
+  bc_x_max = simple_laser
+  bc_y_min = open
+  bc_y_max = open
+end:boundaries
+
+begin:laser
+  # SCPIC's focused field propagates towards -x from the OAP90.
+  boundary = x_max
+  intensity_w_cm2 = 1e16
+  lambda = 1 * micron
+  pol = 0
+  t_start = 0
+  t_end = 16 * femto
+  t_profile = gauss(time, 8 * femto, 2.5 * femto)
+
+  use_custom_profile = T
+  use_spatiotemporal_profile = F
+  profile_data_file = amplitude.dat
+  n_y = 321
+  y_min = -8 * micron
+  y_max = 8 * micron
+  use_phase_from_file = T
+  phase_data_file = phase.dat
+end:laser
+
+begin:output
+  dt_snapshot = 2.5 * femto
+  grid = always
+  ex = always
+  ey = always
+  bz = always
+end:output
