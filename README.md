@@ -5,6 +5,7 @@ fields reflected by parabolic mirrors, then exports transverse electric-field
 profiles for the custom laser reader in the modified EPOCH checkout. The 3D
 path follows the physical-optics Stratton--Chu method of Vallières *et al.*
 (2023) and supports OAP90, on-axis and annular transmission-parabola apertures.
+The code also borrows from C. F. Nielsen (2022).
 
 The code uses one complex convention throughout:
 
