@@ -1,4 +1,4 @@
-# Local EPOCH2D validation cases
+# Local EPOCH validation cases
 
 These cases exercise the exact custom-profile reader in the sibling
 `epoch_dev` checkout. They are intentionally small enough for a workstation.
@@ -48,3 +48,32 @@ and cannot directly impose SCPIC's longitudinal `Ex`. For the f/1 case, measure
 `Ex`, `Ey`, and `Bz` several cells downstream against the SCPIC reference before
 using the result for production physics. If that error is material, an interior
 current-sheet/antenna injector is the appropriate next development step.
+
+## EPOCH3D cases
+
+The 3D suite uses the corresponding local executable and is run separately:
+
+```bash
+.venv/bin/python epoch_tests/run_local_3d.py
+.venv/bin/python epoch_tests/analyse_local_3d.py
+```
+
+Use `--epoch-bin PATH`, `--ranks N`, or list individual case names in the same
+way as the 2D runner. Generated data live under `epoch_tests/runs_3d/`.
+
+1. `static_gaussian_3d` loads a `(n_z, n_y)` static stream with different
+   waists on the two axes. It catches transposition, axis mapping and spatial
+   interpolation mistakes.
+2. `phase_tilt_3d` applies +8° and −5° transverse phase gradients. The signs
+   and magnitudes of both reconstructed Poynting angles test the phasor-to-EPOCH
+   conversion and 3D raw-file ordering.
+3. `scpic_focus_3d` evaluates the full vector OAP90 integral on the `x_max`
+   injection plane, exports its dominant `Ez` component, and compares the two
+   focal-plane widths after EPOCH propagation with direct SCPIC references.
+
+All three cases pass with the local EPOCH3D build. On the present coarse grids,
+the static fitted field waists are 2.474 µm and 1.438 µm for targets of
+2.5 µm and 1.5 µm; the phase-tilt Poynting angles are +9.23° and −5.76°; and
+the propagated OAP focus has 1.187 µm FWHM on both axes versus direct SCPIC
+references of 1.247 µm and 1.249 µm. These tolerances should be tightened in a
+future grid-convergence study.

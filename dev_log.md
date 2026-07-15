@@ -140,3 +140,38 @@ Three local cases now live under `epoch_tests/`: a static Gaussian, a phase-ramp
 * f/1 focused waist at x ≈ 0: 1.126 μm in EPOCH versus 0.944 μm in SCPIC, a 19.3% difference on the initial coarse grid.
 
 The final result is deliberately recorded as a limitation, not a pass at production accuracy. EPOCH's `simple_laser` boundary cannot impose the longitudinal electric component and approximates high-angle content. A grid-convergence and downstream complex-field comparison are required before physics production; an interior current-sheet injector is the preferred fallback if this boundary error remains material.
+
+---
+
+## Phase 8: Full 3D Vector Solver and Paper Reproduction (July 2026)
+
+The implementation was extended from its 2D TM reduction to the vector
+physical-optics Stratton--Chu method used by Vallières *et al.*:
+
+* `ParabolicMirror3D` represents projected circular and annular cuts of the
+  parent paraboloid, including the paper's 220 mm OAP90. It generates
+  Gauss--Legendre surface and oriented-rim quadratures.
+* `LinearPolarisedSuperGaussian3D` evaluates consistent incident E and B
+  phasors for arbitrary orthogonal propagation and polarisation vectors.
+* `evaluate_SC_3D` returns all three reflected E and B components, restores
+  the SI factor of c suppressed in the papers' natural-unit equations, chunks
+  observation points, and optionally retains Dumont *et al.*'s contour term.
+* `SuperGaussianSpectrum` implements the order-seven, 90 nm FWHM spectrum,
+  the paper's discrete-frequency pulse reconstruction, and 20 J energy
+  normalisation.
+
+`paper_benchmark_3d.py` now reproduces the linearly polarised OAP90 entry of
+Table 1. Workstation defaults give 2.663×10²³ W/cm² peak intensity, 0.600 µm
+meridional FWHM, 0.503 µm sagittal FWHM and 0.650 µm Rayleigh length, compared
+with 2.66×10²³ W/cm², 0.600 µm, 0.520 µm and 0.690 µm in the paper.
+
+Three EPOCH3D tests were also added and run locally. The static astigmatic
+profile and two-axis phase tilt verify raw stream ordering and signs. The full
+OAP case propagates to 1.187 µm FWHM on both axes in EPOCH, compared with
+direct SCPIC references of 1.247 µm and 1.249 µm. These remain coarse-grid
+boundary-injection tests rather than production convergence evidence.
+
+The literature review in `docs/literature_review.md` records four close prior
+implementations: the in-house StrattoCalculator, Nielsen's public MIT-licensed
+C++/CUDA vector-integral solver, Bulanov *et al.*'s recent multi-mirror
+library, and Popov's unrelated 2009 3D PIC code also named SCPIC.

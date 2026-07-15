@@ -1,6 +1,9 @@
 import numpy as np
 from scipy.special import hankel1
 
+from .fields import C
+from .mirrors import ContourQuadrature3D, SurfaceQuadrature3D
+
 
 def evaluate_SC_2D(
     x_obs,
@@ -81,3 +84,119 @@ def evaluate_SC_2D(
         By_obs[i] = np.sum(integrand * dl)
 
     return By_obs
+
+
+def _validate_vector_field(values, n_points, name):
+    values = np.asarray(values, dtype=complex)
+    if values.shape != (n_points, 3):
+        raise ValueError(f"{name} must have shape ({n_points}, 3)")
+    return values
+
+
+def _source_gradient_green(observation_points, source_points, k):
+    displacement = observation_points[:, None, :] - source_points[None, :, :]
+    distance = np.linalg.norm(displacement, axis=2)
+    if np.any(distance == 0):
+        raise ValueError("observation points must not lie on the integration surface")
+    exponential = np.exp(1j * k * distance)
+    green = exponential / distance
+    radial_derivative = exponential * (1j * k * distance - 1) / distance**2
+    gradient_source = (
+        -(displacement / distance[:, :, None]) * radial_derivative[:, :, None]
+    )
+    return green, gradient_source
+
+
+def evaluate_SC_3D(
+    observation_points,
+    surface,
+    E_inc,
+    B_inc,
+    k,
+    *,
+    chunk_size=64,
+    contours=(),
+    B_inc_contours=(),
+):
+    """Evaluate the physical-optics Stratton--Chu reflected field in 3D.
+
+    This is the open-surface formula used by Vallières et al.  The surface
+    contribution is always included.  Optional oriented contour data adds
+    the electric-field rim term retained in Dumont et al. (2017).
+
+    Parameters use SI units.  Because the papers write the formula with
+    ``c = 1``, the electric-field terms containing an incident magnetic
+    field include the explicit factor ``c`` here.
+    """
+    observation_points = np.asarray(observation_points, dtype=float)
+    if observation_points.ndim != 2 or observation_points.shape[1] != 3:
+        raise ValueError("observation_points must have shape (n, 3)")
+    if not isinstance(surface, SurfaceQuadrature3D):
+        raise TypeError("surface must be a SurfaceQuadrature3D")
+    if k <= 0:
+        raise ValueError("k must be positive")
+    if chunk_size < 1:
+        raise ValueError("chunk_size must be positive")
+
+    n_surface = len(surface.points)
+    E_inc = _validate_vector_field(E_inc, n_surface, "E_inc")
+    B_inc = _validate_vector_field(B_inc, n_surface, "B_inc")
+    if surface.normals.shape != (n_surface, 3):
+        raise ValueError("surface normals must have shape (n, 3)")
+    if surface.weights.shape != (n_surface,):
+        raise ValueError("surface weights must have shape (n,)")
+
+    if isinstance(contours, ContourQuadrature3D):
+        contours = (contours,)
+    if len(contours) != len(B_inc_contours):
+        raise ValueError("each contour needs corresponding incident B fields")
+
+    n_observation = len(observation_points)
+    electric = np.zeros((n_observation, 3), dtype=complex)
+    magnetic = np.zeros((n_observation, 3), dtype=complex)
+    normal_cross_B = np.cross(surface.normals, B_inc)
+    normal_dot_E = np.sum(surface.normals * E_inc, axis=1)
+    factor = 1 / (2 * np.pi)
+
+    for start in range(0, n_observation, chunk_size):
+        stop = min(start + chunk_size, n_observation)
+        green, gradient = _source_gradient_green(
+            observation_points[start:stop], surface.points, k
+        )
+        electric_integrand = (
+            1j * k * C * normal_cross_B[None, :, :] * green[:, :, None]
+            + normal_dot_E[None, :, None] * gradient
+        )
+        magnetic_integrand = np.cross(normal_cross_B[None, :, :], gradient, axis=-1)
+        electric[start:stop] = factor * np.sum(
+            electric_integrand * surface.weights[None, :, None], axis=1
+        )
+        magnetic[start:stop] = factor * np.sum(
+            magnetic_integrand * surface.weights[None, :, None], axis=1
+        )
+
+        for contour, B_contour in zip(contours, B_inc_contours):
+            if not isinstance(contour, ContourQuadrature3D):
+                raise TypeError("contours must contain ContourQuadrature3D objects")
+            n_contour = len(contour.points)
+            B_contour = _validate_vector_field(B_contour, n_contour, "B_inc_contour")
+            if contour.normals.shape != (n_contour, 3) or contour.d_ell.shape != (
+                n_contour,
+                3,
+            ):
+                raise ValueError("contour normals and d_ell must have shape (n, 3)")
+            _, contour_gradient = _source_gradient_green(
+                observation_points[start:stop], contour.points, k
+            )
+            tangential_B = np.cross(
+                contour.normals, np.cross(contour.normals, B_contour)
+            )
+            line_scalar = np.sum(tangential_B * contour.d_ell, axis=1)
+            electric[start:stop] -= (
+                C
+                * factor
+                / (1j * k)
+                * np.sum(contour_gradient * line_scalar[None, :, None], axis=1)
+            )
+
+    return electric, magnetic

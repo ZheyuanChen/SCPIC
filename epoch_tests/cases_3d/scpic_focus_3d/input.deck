@@ -1,0 +1,53 @@
+begin:control
+  nx = 64
+  ny = 64
+  nz = 64
+  t_end = 30 * femto
+  x_min = -4 * micron
+  x_max = 4 * micron
+  y_min = -5 * micron
+  y_max = 5 * micron
+  z_min = -5 * micron
+  z_max = 5 * micron
+  stdout_frequency = 80
+end:control
+
+begin:boundaries
+  bc_x_min = open
+  bc_x_max = simple_laser
+  bc_y_min = open
+  bc_y_max = open
+  bc_z_min = open
+  bc_z_max = open
+end:boundaries
+
+begin:laser
+  # The OAP90 field travels towards -x; pol=90 drives its dominant Ez.
+  boundary = x_max
+  intensity_w_cm2 = 1e16
+  lambda = 1 * micron
+  pol = 90
+  t_start = 0
+  t_end = 14 * femto
+  t_profile = gauss(time, 7 * femto, 2.5 * femto)
+
+  use_custom_profile = T
+  use_spatiotemporal_profile = F
+  profile_data_file = amplitude.dat
+  n_y_points = 65
+  n_z_points = 65
+  y_min = -5 * micron
+  y_max = 5 * micron
+  z_min = -5 * micron
+  z_max = 5 * micron
+  use_phase_from_file = T
+  phase_data_file = phase.dat
+end:laser
+
+begin:output
+  dt_snapshot = 2.5 * femto
+  grid = always
+  ex = always
+  ez = always
+  by = always
+end:output
