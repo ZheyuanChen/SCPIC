@@ -1,6 +1,6 @@
 # SCPIC
 
-SCPIC computes two-dimensional TM or fully vectorial three-dimensional laser
+SCPIC (Stratton-Chu for Particle-in-Cell simulations) computes two-dimensional TM or fully vectorial three-dimensional laser
 fields reflected by parabolic mirrors, then exports transverse electric-field
 profiles for the custom laser reader in the modified EPOCH checkout. The 3D
 path follows the physical-optics Stratton--Chu method of Vallières *et al.*
