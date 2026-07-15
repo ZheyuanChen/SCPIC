@@ -107,6 +107,37 @@ def _source_gradient_green(observation_points, source_points, k):
     return green, gradient_source
 
 
+def _select_array_backend(backend):
+    if backend == "numpy":
+        return np, np.asarray
+    if backend == "cupy":
+        try:
+            import cupy as cp
+        except ImportError as error:
+            raise ImportError(
+                "backend='cupy' requires a CuPy build matching the installed CUDA runtime"
+            ) from error
+        return cp, cp.asnumpy
+    raise ValueError("backend must be 'numpy' or 'cupy'")
+
+
+def _source_gradient_green_backend(observation_points, source_points, k, xp):
+    displacement = observation_points[:, None, :] - source_points[None, :, :]
+    distance = xp.linalg.norm(displacement, axis=2)
+    singular = xp.any(distance == 0)
+    if hasattr(singular, "item"):
+        singular = singular.item()
+    if singular:
+        raise ValueError("observation points must not lie on the integration surface")
+    exponential = xp.exp(1j * k * distance)
+    green = exponential / distance
+    radial_derivative = exponential * (1j * k * distance - 1) / distance**2
+    gradient_source = (
+        -(displacement / distance[:, :, None]) * radial_derivative[:, :, None]
+    )
+    return green, gradient_source
+
+
 def evaluate_SC_3D(
     observation_points,
     surface,
@@ -117,6 +148,7 @@ def evaluate_SC_3D(
     chunk_size=64,
     contours=(),
     B_inc_contours=(),
+    backend="numpy",
 ):
     """Evaluate the physical-optics Stratton--Chu reflected field in 3D.
 
@@ -126,7 +158,9 @@ def evaluate_SC_3D(
 
     Parameters use SI units.  Because the papers write the formula with
     ``c = 1``, the electric-field terms containing an incident magnetic
-    field include the explicit factor ``c`` here.
+    field include the explicit factor ``c`` here.  ``backend='cupy'`` moves
+    each observation chunk and the fixed surface data to a CUDA device, but
+    still returns NumPy arrays and leaves ``'numpy'`` as the reference path.
     """
     observation_points = np.asarray(observation_points, dtype=float)
     if observation_points.ndim != 2 or observation_points.shape[1] != 3:
@@ -137,6 +171,7 @@ def evaluate_SC_3D(
         raise ValueError("k must be positive")
     if chunk_size < 1:
         raise ValueError("chunk_size must be positive")
+    xp, to_numpy = _select_array_backend(backend)
 
     n_surface = len(surface.points)
     E_inc = _validate_vector_field(E_inc, n_surface, "E_inc")
@@ -151,52 +186,71 @@ def evaluate_SC_3D(
     if len(contours) != len(B_inc_contours):
         raise ValueError("each contour needs corresponding incident B fields")
 
+    validated_contours = []
+    for contour, B_contour in zip(contours, B_inc_contours):
+        if not isinstance(contour, ContourQuadrature3D):
+            raise TypeError("contours must contain ContourQuadrature3D objects")
+        n_contour = len(contour.points)
+        B_contour = _validate_vector_field(B_contour, n_contour, "B_inc_contour")
+        if contour.normals.shape != (n_contour, 3) or contour.d_ell.shape != (
+            n_contour,
+            3,
+        ):
+            raise ValueError("contour normals and d_ell must have shape (n, 3)")
+        validated_contours.append((contour, B_contour))
+
     n_observation = len(observation_points)
     electric = np.zeros((n_observation, 3), dtype=complex)
     magnetic = np.zeros((n_observation, 3), dtype=complex)
-    normal_cross_B = np.cross(surface.normals, B_inc)
-    normal_dot_E = np.sum(surface.normals * E_inc, axis=1)
+    surface_points_backend = xp.asarray(surface.points)
+    surface_normals_backend = xp.asarray(surface.normals)
+    surface_weights_backend = xp.asarray(surface.weights)
+    E_inc_backend = xp.asarray(E_inc)
+    B_inc_backend = xp.asarray(B_inc)
+    normal_cross_B = xp.cross(surface_normals_backend, B_inc_backend)
+    normal_dot_E = xp.sum(surface_normals_backend * E_inc_backend, axis=1)
+    contour_backend = []
+    for contour, B_contour in validated_contours:
+        contour_points = xp.asarray(contour.points)
+        contour_normals = xp.asarray(contour.normals)
+        B_contour_backend = xp.asarray(B_contour)
+        tangential_B = xp.cross(
+            contour_normals, xp.cross(contour_normals, B_contour_backend)
+        )
+        line_scalar = xp.sum(tangential_B * xp.asarray(contour.d_ell), axis=1)
+        contour_backend.append((contour_points, line_scalar))
     factor = 1 / (2 * np.pi)
 
     for start in range(0, n_observation, chunk_size):
         stop = min(start + chunk_size, n_observation)
-        green, gradient = _source_gradient_green(
-            observation_points[start:stop], surface.points, k
+        observation_backend = xp.asarray(observation_points[start:stop])
+        green, gradient = _source_gradient_green_backend(
+            observation_backend, surface_points_backend, k, xp
         )
         electric_integrand = (
             1j * k * C * normal_cross_B[None, :, :] * green[:, :, None]
             + normal_dot_E[None, :, None] * gradient
         )
-        magnetic_integrand = np.cross(normal_cross_B[None, :, :], gradient, axis=-1)
-        electric[start:stop] = factor * np.sum(
-            electric_integrand * surface.weights[None, :, None], axis=1
+        magnetic_integrand = xp.cross(normal_cross_B[None, :, :], gradient, axis=-1)
+        electric_chunk = factor * xp.sum(
+            electric_integrand * surface_weights_backend[None, :, None], axis=1
         )
-        magnetic[start:stop] = factor * np.sum(
-            magnetic_integrand * surface.weights[None, :, None], axis=1
+        magnetic_chunk = factor * xp.sum(
+            magnetic_integrand * surface_weights_backend[None, :, None], axis=1
         )
 
-        for contour, B_contour in zip(contours, B_inc_contours):
-            if not isinstance(contour, ContourQuadrature3D):
-                raise TypeError("contours must contain ContourQuadrature3D objects")
-            n_contour = len(contour.points)
-            B_contour = _validate_vector_field(B_contour, n_contour, "B_inc_contour")
-            if contour.normals.shape != (n_contour, 3) or contour.d_ell.shape != (
-                n_contour,
-                3,
-            ):
-                raise ValueError("contour normals and d_ell must have shape (n, 3)")
-            _, contour_gradient = _source_gradient_green(
-                observation_points[start:stop], contour.points, k
+        for contour_points, line_scalar in contour_backend:
+            _, contour_gradient = _source_gradient_green_backend(
+                observation_backend, contour_points, k, xp
             )
-            tangential_B = np.cross(
-                contour.normals, np.cross(contour.normals, B_contour)
-            )
-            line_scalar = np.sum(tangential_B * contour.d_ell, axis=1)
-            electric[start:stop] -= (
+            electric_chunk -= (
                 C
                 * factor
                 / (1j * k)
-                * np.sum(contour_gradient * line_scalar[None, :, None], axis=1)
+                * xp.sum(contour_gradient * line_scalar[None, :, None], axis=1)
             )
+
+        electric[start:stop] = to_numpy(electric_chunk)
+        magnetic[start:stop] = to_numpy(magnetic_chunk)
 
     return electric, magnetic

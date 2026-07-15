@@ -1,3 +1,5 @@
+from math import factorial
+
 import numpy as np
 from scipy.special import gamma
 
@@ -37,13 +39,118 @@ class IncidentFieldTM:
         return dB_dx * nx + dB_dz * nz
 
 
-class LinearPolarisedSuperGaussian3D:
-    """Vector super-Gaussian plane wave incident on a 3D reflector.
+class ZernikeWavefront:
+    """Optical-path-difference map expanded in OSA/ANSI Zernike modes.
 
-    The complex phasor convention is ``Re(E exp(-i omega t))``.  The
-    default field travels along ``-z``, is polarised along ``+x``, and has
-    ``B = propagation_direction x E / c``.
+    Coefficients are supplied as ``{(n, m): value_in_metres}``.  The modes
+    are orthonormal on the unit disk, so each non-piston coefficient is its
+    RMS optical-path-difference contribution.  Positive ``m`` uses cosine
+    azimuthal dependence and negative ``m`` uses sine dependence.
     """
+
+    def __init__(
+        self,
+        pupil_radius,
+        coefficients,
+        *,
+        centre=(0.0, 0.0, 0.0),
+        axis_u=(1.0, 0.0, 0.0),
+        axis_v=(0.0, 1.0, 0.0),
+        outside="raise",
+    ):
+        if pupil_radius <= 0:
+            raise ValueError("pupil_radius must be positive")
+        if outside not in {"raise", "zero", "extrapolate"}:
+            raise ValueError("outside must be 'raise', 'zero', or 'extrapolate'")
+
+        centre = np.asarray(centre, dtype=float)
+        axis_u = np.asarray(axis_u, dtype=float)
+        axis_v = np.asarray(axis_v, dtype=float)
+        if centre.shape != (3,) or axis_u.shape != (3,) or axis_v.shape != (3,):
+            raise ValueError("centre, axis_u, and axis_v must be 3-vectors")
+        if np.linalg.norm(axis_u) == 0 or np.linalg.norm(axis_v) == 0:
+            raise ValueError("pupil axes must be non-zero")
+        axis_u = axis_u / np.linalg.norm(axis_u)
+        axis_v = axis_v / np.linalg.norm(axis_v)
+        if not np.isclose(np.dot(axis_u, axis_v), 0.0, atol=1e-12):
+            raise ValueError("pupil axes must be perpendicular")
+
+        validated = {}
+        for mode, coefficient in dict(coefficients).items():
+            if not isinstance(mode, tuple) or len(mode) != 2:
+                raise ValueError("Zernike modes must be (n, m) tuples")
+            n, m = mode
+            if (
+                not isinstance(n, (int, np.integer))
+                or not isinstance(m, (int, np.integer))
+                or n < 0
+                or abs(m) > n
+                or (n - abs(m)) % 2
+            ):
+                raise ValueError(f"invalid Zernike mode {(n, m)}")
+            coefficient = float(coefficient)
+            if not np.isfinite(coefficient):
+                raise ValueError("Zernike coefficients must be finite")
+            validated[(int(n), int(m))] = coefficient
+
+        self.pupil_radius = float(pupil_radius)
+        self.coefficients = validated
+        self.centre = centre
+        self.axis_u = axis_u
+        self.axis_v = axis_v
+        self.outside = outside
+
+    @staticmethod
+    def _radial_polynomial(n, m, radius):
+        radial = np.zeros_like(radius)
+        for index in range((n - m) // 2 + 1):
+            coefficient = (
+                (-1) ** index
+                * factorial(n - index)
+                / (
+                    factorial(index)
+                    * factorial((n + m) // 2 - index)
+                    * factorial((n - m) // 2 - index)
+                )
+            )
+            radial += coefficient * radius ** (n - 2 * index)
+        return radial
+
+    def opd(self, points):
+        """Return optical path difference in metres at three-dimensional points."""
+        points = np.asarray(points, dtype=float)
+        if points.ndim != 2 or points.shape[1] != 3:
+            raise ValueError("points must have shape (n, 3)")
+        relative = points - self.centre
+        u = relative @ self.axis_u / self.pupil_radius
+        v = relative @ self.axis_v / self.pupil_radius
+        radius = np.hypot(u, v)
+        outside = radius > 1.0 + 1e-12
+        if self.outside == "raise" and np.any(outside):
+            raise ValueError("wavefront points lie outside the Zernike pupil")
+
+        theta = np.arctan2(v, u)
+        result = np.zeros(len(points), dtype=float)
+        for (n, m), coefficient in self.coefficients.items():
+            absolute_m = abs(m)
+            radial = self._radial_polynomial(n, absolute_m, radius)
+            normalisation = np.sqrt(n + 1) if m == 0 else np.sqrt(2 * (n + 1))
+            if m > 0:
+                angular = np.cos(absolute_m * theta)
+            elif m < 0:
+                angular = np.sin(absolute_m * theta)
+            else:
+                angular = 1.0
+            result += coefficient * normalisation * radial * angular
+        if self.outside == "zero":
+            result[outside] = 0.0
+        return result
+
+    __call__ = opd
+
+
+class _SuperGaussian3D:
+    """Shared spatial and spectral handling for collimated vector beams."""
 
     def __init__(
         self,
@@ -52,8 +159,8 @@ class LinearPolarisedSuperGaussian3D:
         spatial_order=16,
         E0=1.0,
         direction=(0.0, 0.0, -1.0),
-        polarisation=(1.0, 0.0, 0.0),
         centre=(0.0, 0.0, 0.0),
+        wavefront_opd=None,
     ):
         if w0 <= 0:
             raise ValueError("w0 must be positive")
@@ -63,29 +170,22 @@ class LinearPolarisedSuperGaussian3D:
             raise ValueError("spatial_order must be positive")
 
         direction = np.asarray(direction, dtype=float)
-        polarisation = np.asarray(polarisation, dtype=float)
         centre = np.asarray(centre, dtype=float)
-        if (
-            direction.shape != (3,)
-            or polarisation.shape != (3,)
-            or centre.shape != (3,)
-        ):
-            raise ValueError("direction, polarisation, and centre must be 3-vectors")
-        if np.linalg.norm(direction) == 0 or np.linalg.norm(polarisation) == 0:
-            raise ValueError("direction and polarisation must be non-zero")
-        direction = direction / np.linalg.norm(direction)
-        polarisation = polarisation / np.linalg.norm(polarisation)
-        if not np.isclose(np.dot(direction, polarisation), 0.0, atol=1e-12):
-            raise ValueError("polarisation must be perpendicular to direction")
+        if direction.shape != (3,) or centre.shape != (3,):
+            raise ValueError("direction and centre must be 3-vectors")
+        if np.linalg.norm(direction) == 0:
+            raise ValueError("direction must be non-zero")
+        if wavefront_opd is not None and not callable(wavefront_opd):
+            raise TypeError("wavefront_opd must be callable")
 
         self.w0 = float(w0)
         self.wavelength = wavelength
         self.k = None if wavelength is None else 2 * np.pi / wavelength
         self.spatial_order = float(spatial_order)
         self.E0 = complex(E0)
-        self.direction = direction
-        self.polarisation = polarisation
+        self.direction = direction / np.linalg.norm(direction)
         self.centre = centre
+        self.wavefront_opd = wavefront_opd
 
     @classmethod
     def from_intensity_fwhm(cls, intensity_fwhm, **kwargs):
@@ -102,8 +202,16 @@ class LinearPolarisedSuperGaussian3D:
         p = self.spatial_order
         return 2 * np.pi * self.w0**2 * 2 ** (-2 / p) * gamma(2 / p) / p
 
+    def _polarisation_vectors(self, transverse, radius):
+        raise NotImplementedError
+
     def fields(self, points, *, k=None, amplitude=None, spectral_phase=0.0):
-        """Evaluate incident electric and magnetic phasors at ``points``."""
+        """Evaluate incident electric and magnetic phasors at ``points``.
+
+        ``wavefront_opd(points)`` is interpreted in metres and contributes
+        ``+k * OPD`` to the phasor phase.  This keeps a measured wavefront
+        frequency-aware during broadband propagation.
+        """
         points = np.asarray(points, dtype=float)
         if points.ndim != 2 or points.shape[1] != 3:
             raise ValueError("points must have shape (n, 3)")
@@ -119,11 +227,74 @@ class LinearPolarisedSuperGaussian3D:
         transverse = relative - longitudinal[:, None] * self.direction
         radius = np.linalg.norm(transverse, axis=1)
         envelope = np.exp(-((radius / self.w0) ** self.spatial_order))
-        phase = np.exp(1j * (k * longitudinal + spectral_phase))
-        scalar = amplitude * envelope * phase
-        electric = scalar[:, None] * self.polarisation
+        phase_argument = k * longitudinal + spectral_phase
+        if self.wavefront_opd is not None:
+            opd = np.asarray(self.wavefront_opd(points), dtype=float)
+            if opd.shape != (len(points),) or not np.all(np.isfinite(opd)):
+                raise ValueError("wavefront_opd must return one finite value per point")
+            phase_argument = phase_argument + k * opd
+        scalar = amplitude * envelope * np.exp(1j * phase_argument)
+        electric = scalar[:, None] * self._polarisation_vectors(transverse, radius)
         magnetic = np.cross(self.direction, electric) / C
         return electric, magnetic
+
+
+class LinearPolarisedSuperGaussian3D(_SuperGaussian3D):
+    """Vector super-Gaussian plane wave incident on a 3D reflector.
+
+    The complex phasor convention is ``Re(E exp(-i omega t))``.  The
+    default field travels along ``-z``, is polarised along ``+x``, and has
+    ``B = propagation_direction x E / c``.
+    """
+
+    def __init__(
+        self,
+        w0,
+        wavelength=None,
+        spatial_order=16,
+        E0=1.0,
+        direction=(0.0, 0.0, -1.0),
+        polarisation=(1.0, 0.0, 0.0),
+        centre=(0.0, 0.0, 0.0),
+        wavefront_opd=None,
+    ):
+        polarisation = np.asarray(polarisation, dtype=float)
+        if polarisation.shape != (3,):
+            raise ValueError("polarisation must be a 3-vector")
+        if np.linalg.norm(polarisation) == 0:
+            raise ValueError("polarisation must be non-zero")
+        polarisation = polarisation / np.linalg.norm(polarisation)
+        super().__init__(
+            w0=w0,
+            wavelength=wavelength,
+            spatial_order=spatial_order,
+            E0=E0,
+            direction=direction,
+            centre=centre,
+            wavefront_opd=wavefront_opd,
+        )
+        if not np.isclose(np.dot(self.direction, polarisation), 0.0, atol=1e-12):
+            raise ValueError("polarisation must be perpendicular to direction")
+        self.polarisation = polarisation
+
+    def _polarisation_vectors(self, transverse, radius):
+        return np.broadcast_to(self.polarisation, transverse.shape)
+
+
+class RadiallyPolarisedSuperGaussian3D(_SuperGaussian3D):
+    """Collimated radially polarised super-Gaussian beam.
+
+    The electric direction is the local transverse radial unit vector.  It is
+    set to zero at the single undefined point on the beam axis; this has zero
+    measure in surface and energy integrals and represents the regular centre
+    of a physical radially polarised mode.
+    """
+
+    def _polarisation_vectors(self, transverse, radius):
+        vectors = np.zeros_like(transverse)
+        nonzero = radius > 0
+        vectors[nonzero] = transverse[nonzero] / radius[nonzero, None]
+        return vectors
 
 
 def electric_from_magnetic_tm(By, x, z, k, *, edge_order=2):

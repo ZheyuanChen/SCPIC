@@ -175,3 +175,47 @@ The literature review in `docs/literature_review.md` records four close prior
 implementations: the in-house StrattoCalculator, Nielsen's public MIT-licensed
 C++/CUDA vector-integral solver, Bulanov *et al.*'s recent multi-mirror
 library, and Popov's unrelated 2009 3D PIC code also named SCPIC.
+
+---
+
+## Phase 9: Wavefronts, Radial Polarisation and Independent Solver Checks (July 2026)
+
+Nielsen's released C++/CUDA diffraction code was inspected at source level
+before deciding whether to adopt it. Its specialised electric-field
+components agree algebraically with SCPIC's general physical-optics integral
+for a centred paraboloid. The active release is not a suitable project base,
+however: its OAP offset and Zernike paths are disabled, its incident profile
+and grid are compile-time definitions, two transverse magnetic components
+omit the observation-plane z coordinate, and the generated field files do not
+include the header required by its own loader. No Nielsen source was copied.
+
+The useful functionality was instead implemented within SCPIC's existing API:
+
+* `ZernikeWavefront` represents orthonormal OSA/ANSI modes with coefficients
+  in metres of RMS optical path difference. Arbitrary measured wavefronts can
+  be supplied as callables returning OPD at the mirror points. The phase is
+  evaluated as `k * OPD` separately for every spectral component.
+* `RadiallyPolarisedSuperGaussian3D` supplies the local transverse radial
+  electric direction and a consistent magnetic field. Its on-axis value is
+  zero to regularise the otherwise undefined direction at that measure-zero
+  point. An axisymmetric HNAP regression converges between 12×24 and 20×40
+  surface quadratures and produces the expected purely longitudinal electric
+  field at the focus.
+* `maxwell_residuals` checks the two divergence and two curl equations for
+  `exp(-i omega t)` phasors on a regular 3D grid. A plane-wave unit test gives
+  curl residuals below 0.3%; the small directly propagated HNAP regression has
+  all four normalised residuals below 3%.
+* A corrected specialised paraboloid component expansion, derived
+  independently from the published formulation, matches the general vector
+  integrand to floating-point precision and guards against the missing-z
+  magnetic-field error found in the Nielsen release.
+* `evaluate_SC_3D(..., backend="cupy")` is now an optional GPU execution path.
+  It keeps surface data resident on the device and transfers observation
+  chunks, while returning NumPy arrays and retaining NumPy as the canonical
+  implementation. This workstation has no CUDA runtime, so execution and
+  performance parity on a GPU remain to be verified before production use.
+
+The direct `pytest` console entry point now includes the repository root via
+the project configuration, matching `python -m pytest`. The remaining paper
+work is a converged radial-polarisation and HNAP/TP reproduction; the remaining
+performance work is a NumPy/CuPy comparison on CUDA hardware.

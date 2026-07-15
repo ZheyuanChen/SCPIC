@@ -48,6 +48,7 @@ import numpy as np
 from scpic import (
     LinearPolarisedSuperGaussian3D,
     ParabolicMirror3D,
+    ZernikeWavefront,
     evaluate_SC_3D,
 )
 
@@ -69,6 +70,33 @@ E_focus, B_focus = evaluate_SC_3D(
     2 * np.pi / wavelength,
 )
 ```
+
+Measured or modelled wavefront errors are supplied as optical path difference
+in metres. For example, this applies 30 nm RMS OSA/ANSI defocus over the OAP
+pupil:
+
+```python
+wavefront = ZernikeWavefront(
+    pupil_radius=mirror.D / 2,
+    coefficients={(2, 0): 30e-9},
+    centre=(*mirror.aperture_centre, 0.0),
+)
+incident = LinearPolarisedSuperGaussian3D.from_intensity_fwhm(
+    mirror.D,
+    wavelength=wavelength,
+    centre=(*mirror.aperture_centre, 0.0),
+    wavefront_opd=wavefront,
+)
+```
+
+`RadiallyPolarisedSuperGaussian3D` provides the corresponding radial input
+mode. Any callable returning one finite OPD value per point can replace
+`ZernikeWavefront`, allowing measured maps to be interpolated onto the mirror.
+
+For large observation grids, `evaluate_SC_3D(..., backend="cupy")` uses a
+locally installed CuPy build and transfers one observation chunk at a time to
+the GPU. CuPy must be installed separately to match the machine's CUDA
+version; the default NumPy path remains the tested reference implementation.
 
 See [`docs/methodology_3d.md`](docs/methodology_3d.md) for equations,
 conventions, benchmark results and current limitations. The existing-code

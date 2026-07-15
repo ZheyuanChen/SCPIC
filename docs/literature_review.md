@@ -31,8 +31,20 @@ Carlo laser--electron interaction code. Its archive explicitly includes a
 separate solver for the Stratton--Chu vector diffraction integrals from an
 incident beam on a focusing mirror. This is the clearest public code base to
 inspect for performance design, GPU batching and independent numerical
-cross-checks. It is not an EPOCH profile generator and should be treated as a
-reference implementation rather than a drop-in dependency.
+cross-checks. A source-level review confirmed that its electric integrand is
+algebraically equivalent to SCPIC's general vector expression for a centred
+paraboloid and real linear input. The released execution path nevertheless
+hard-codes a monochromatic profile, leaves offset and Zernike paths disabled,
+omits the observation-z term in two transverse magnetic component formulas,
+and has generator/loader header and grid-spacing mismatches. It is not an
+EPOCH profile generator and is therefore treated as a reference for corrected
+component tests and GPU design rather than a dependency. No Nielsen source was
+copied into SCPIC.
+
+The dataset metadata and paper state MIT licensing, but the downloaded ZIP
+does not contain a licence text. Any future direct code reuse should retain
+clear provenance and the upstream permission notice rather than relying only
+on the archive metadata.
 
 - Code and data archive: <https://doi.org/10.17632/bd5m7tf5yr.1>
 

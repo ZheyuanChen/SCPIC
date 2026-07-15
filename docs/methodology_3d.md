@@ -56,7 +56,7 @@ near a parabolic focus because \(|\mathbf r_S|-z_S=2f_0\); convergence must
 still be checked whenever the geometry, aberrations or observation region
 changes.
 
-## Incident pulse and energy
+## Incident polarisation, wavefront and energy
 
 `LinearPolarisedSuperGaussian3D` implements
 
@@ -74,6 +74,19 @@ w_0=\frac{w_{\mathrm{FWHM}}}
 {2(\ln2/2)^{1/p}}.
 \]
 
+`RadiallyPolarisedSuperGaussian3D` replaces the fixed polarisation vector by
+the local transverse radial unit vector. Its value is set to zero at the
+single undefined point on the beam axis, which has zero measure in the
+surface and energy integrals.
+
+Both incident-field classes accept `wavefront_opd(points)`, expressed in
+metres. A spectral component of wavenumber (k_n) receives the phase
+(+k_n\,\mathrm{OPD}), so a single measured surface map remains physically
+consistent across the bandwidth. `ZernikeWavefront` supplies orthonormal
+OSA/ANSI modes on a user-defined pupil: coefficients are RMS OPD in metres,
+positive azimuthal index uses cosine dependence, and negative index uses sine
+dependence. An arbitrary callable can instead interpolate measured data.
+
 `SuperGaussianSpectrum` samples the order-seven 90 nm FWHM spectrum around
 800 nm. For uniform angular-frequency spacing, \(T=2\pi/\Delta\omega\), and
 the component amplitudes are normalised so that
@@ -85,6 +98,21 @@ E_L=T\sum_n\int 2\epsilon_0c|E_n|^2dA.
 The analytic signal is \(2\sum_n\mathbf E_n e^{-i\omega_nt}\), and its
 instantaneous envelope intensity is
 \(I=\epsilon_0c|\widetilde{\mathbf E}|^2/2\).
+
+## Numerical backends and field diagnostics
+
+NumPy direct quadrature is the reference implementation. Passing
+`backend="cupy"` transfers the fixed surface data and one observation chunk at
+a time to a CUDA device, then returns ordinary NumPy arrays. CuPy is an
+optional, externally installed dependency because its package must match the
+local CUDA version. The GPU path shares the same algebra and validation as the
+reference path but still requires a runtime comparison on CUDA hardware.
+
+`maxwell_residuals()` evaluates dimensionless RMS residuals of both divergence
+and curl equations for monochromatic phasors on a regular Cartesian volume.
+On the small HNAP regression grid, all four residuals are below 3%; this limit
+includes second-order finite-difference and surface-quadrature error rather
+than representing an exact analytic tolerance.
 
 ## Reproduction status
 
@@ -100,7 +128,8 @@ With the workstation defaults it gives:
 
 These are strong checks of the geometry, phase, vector integral and pulse
 normalisation, but they are not a complete reproduction of the paper. Radial
-polarisation, arbitrary measured wavefronts/Zernike aberrations, and the
-paper's full HNAP/TP comparison remain to be implemented. Production results
-should include explicit convergence in surface quadrature, spectral sampling
-and observation-grid spacing.
+polarisation and arbitrary measured/Zernike wavefronts are now supported, but
+the paper's full radial-polarisation and HNAP/TP numerical comparisons remain
+to be run. Production results should include explicit convergence in surface
+quadrature, spectral sampling, observation-grid spacing and, when relevant,
+the interpolation of measured wavefront data.
