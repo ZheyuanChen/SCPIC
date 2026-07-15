@@ -114,6 +114,42 @@ class ParabolicMirror3D:
         """Return the 220-mm, 115-mm-effective-focal-length paper geometry."""
         return cls(f0=57.5e-3, D=220e-3, mirror_type="OAP90")
 
+    @classmethod
+    def vallieres_hnap(cls):
+        """Return the 220-mm, 58-mm-parent-focal-length paper HNAP."""
+        return cls(f0=58e-3, D=220e-3, mirror_type="HNAP")
+
+    @classmethod
+    def vallieres_tp(
+        cls,
+        obstruction_ratio=0.20,
+        *,
+        incident_fwhm=200e-3,
+        focus_margin=5e-3,
+        outer_diameter=220e-3,
+    ):
+        """Return the paper's transmission parabola for an obstruction ratio.
+
+        The geometry follows Eqs. (6)--(7) of Vallières et al. (2023).  The
+        default 20% obstruction gives an 89.44-mm inner diameter and a 20-mm
+        parent focal length.
+        """
+        if not 0 < obstruction_ratio < 1:
+            raise ValueError("obstruction_ratio must lie between zero and one")
+        if incident_fwhm <= 0 or focus_margin <= 0 or outer_diameter <= 0:
+            raise ValueError("diameters and focus_margin must be positive")
+        inner_diameter = incident_fwhm * np.sqrt(obstruction_ratio)
+        if inner_diameter >= outer_diameter:
+            raise ValueError("the derived inner diameter must be smaller than D")
+        inner_radius = inner_diameter / 2
+        f0 = 0.5 * (np.sqrt(focus_margin**2 + inner_radius**2) - focus_margin)
+        return cls(
+            f0=f0,
+            D=outer_diameter,
+            mirror_type="TP",
+            inner_diameter=inner_diameter,
+        )
+
     @property
     def aperture_centre(self):
         if self.mirror_type == "OAP90":

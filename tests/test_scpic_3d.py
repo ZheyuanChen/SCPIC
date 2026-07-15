@@ -2,8 +2,12 @@ import numpy as np
 import pytest
 from scipy.integrate import quad
 
-from paper_benchmark_3d import run_benchmark
-from scpic.fields import C, LinearPolarisedSuperGaussian3D
+from paper_benchmark_3d import run_benchmark, run_case
+from scpic.fields import (
+    C,
+    LinearPolarisedSuperGaussian3D,
+    TM01RadiallyPolarisedBeam3D,
+)
 from scpic.mirrors import ParabolicMirror3D
 from scpic.pulse import (
     SuperGaussianSpectrum,
@@ -49,6 +53,17 @@ def test_annular_surface_and_contours_have_consistent_orientation():
     )
     assert outer_signed_area > 0
     assert inner_signed_area < 0
+
+
+def test_vallieres_mirror_presets_reproduce_paper_geometry():
+    hnap = ParabolicMirror3D.vallieres_hnap()
+    tp = ParabolicMirror3D.vallieres_tp()
+
+    assert hnap.f0 == pytest.approx(58e-3)
+    assert hnap.D == pytest.approx(220e-3)
+    assert tp.inner_diameter == pytest.approx(200e-3 * np.sqrt(0.20))
+    assert tp.f0 == pytest.approx(20e-3)
+    assert tp.D == pytest.approx(220e-3)
 
 
 def test_super_gaussian_width_direction_and_effective_area():
@@ -144,6 +159,19 @@ def test_spectrum_recovers_energy_and_reconstructs_positive_frequencies():
     assert np.all(electric_intensity(reconstructed) > 0)
 
 
+def test_tm01_frequency_dependent_area_recovers_pulse_energy():
+    spectrum = SuperGaussianSpectrum.from_wavelength_bandwidth(
+        n_components=17, total_energy=20.0
+    )
+    beam = TM01RadiallyPolarisedBeam3D(w0=107e-3)
+    wavenumbers = spectrum.angular_frequencies / C
+    areas = beam.effective_area(wavenumbers)
+    amplitudes = spectrum.component_amplitudes(areas)
+
+    np.testing.assert_allclose(areas, np.pi / wavenumbers**2)
+    assert spectrum.recovered_energy(amplitudes, areas) == pytest.approx(20.0)
+
+
 def test_workstation_paper_benchmark_recovers_reported_focal_dimensions():
     result = run_benchmark(
         n_radial=12,
@@ -156,3 +184,21 @@ def test_workstation_paper_benchmark_recovers_reported_focal_dimensions():
     assert abs(differences["fwhm_sagittal_um"]) < 0.05
     assert abs(differences["rayleigh_length_um"]) < 0.10
     assert abs(differences["peak_intensity_W_cm2"]) < 0.10
+
+
+@pytest.mark.parametrize("polarisation", ["linear", "radial"])
+@pytest.mark.parametrize("mirror_type", ["HNAP", "OAP90", "TP"])
+def test_all_vallieres_table_cases_are_reproduced(polarisation, mirror_type):
+    result = run_case(
+        mirror_type,
+        polarisation,
+        n_radial=12,
+        n_azimuthal=24,
+        n_profile=61,
+        n_components=15,
+    )
+    differences = result["relative_difference"]
+    assert abs(differences["peak_intensity_W_cm2"]) < 0.13
+    assert abs(differences["fwhm_x_um"]) < 0.06
+    assert abs(differences["fwhm_y_um"]) < 0.06
+    assert abs(differences["rayleigh_length_um"]) < 0.10

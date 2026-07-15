@@ -10,6 +10,7 @@ from scpic.fields import (
     C,
     LinearPolarisedSuperGaussian3D,
     RadiallyPolarisedSuperGaussian3D,
+    TM01RadiallyPolarisedBeam3D,
     ZernikeWavefront,
 )
 from scpic.mirrors import ParabolicMirror3D
@@ -73,6 +74,30 @@ def test_radial_polarisation_and_magnetic_direction():
     assert electric[1, 1].imag == pytest.approx(0.0)
     np.testing.assert_allclose(magnetic, np.cross(field.direction, electric) / C)
     np.testing.assert_array_equal(electric[2], 0.0)
+
+
+def test_tm01_matches_vallieres_incident_field_equations():
+    wavelength = 800e-9
+    k = 2 * np.pi / wavelength
+    w0 = 107e-3
+    amplitude = 3.5
+    field = TM01RadiallyPolarisedBeam3D(
+        w0=w0,
+        wavelength=wavelength,
+        direction=(0.0, 0.0, -1.0),
+    )
+    points = np.array([[w0 / np.sqrt(2), 0.0, 0.0], [0.0, 0.0, 0.0]])
+    electric, magnetic = field.fields(points, amplitude=amplitude)
+
+    radius = points[0, 0]
+    factor = 2 * amplitude / (k * w0**2) * np.exp(-((radius / w0) ** 2))
+    assert electric[0, 0] == pytest.approx(factor * radius)
+    assert electric[0, 2] == pytest.approx(factor * 2j / k * (radius**2 / w0**2 - 1))
+    assert electric[1, 0] == pytest.approx(0.0)
+    assert electric[1, 1] == pytest.approx(0.0)
+    assert electric[1, 2] == pytest.approx(-4j * amplitude / (k**2 * w0**2))
+    np.testing.assert_allclose(magnetic[:, 1], -electric[:, 0] / C)
+    np.testing.assert_allclose(magnetic[:, [0, 2]], 0.0, atol=1e-30)
 
 
 def test_radial_hnap_focus_is_longitudinal_and_converged():

@@ -297,6 +297,91 @@ class RadiallyPolarisedSuperGaussian3D(_SuperGaussian3D):
         return vectors
 
 
+class TM01RadiallyPolarisedBeam3D(_SuperGaussian3D):
+    """Paper-accurate collimated TM01 incident field.
+
+    This implements Eqs. (16)--(17) of Vallières et al. (2023), generalised
+    from propagation along ``-z`` to an arbitrary ``direction``.  Unlike
+    :class:`RadiallyPolarisedSuperGaussian3D`, the transverse electric field
+    vanishes continuously on axis and the small longitudinal component makes
+    the incident field divergence-free.
+
+    ``E0`` is the spectral coefficient denoted ``E0,n`` in the paper, rather
+    than the peak radial electric field.
+    """
+
+    def __init__(
+        self,
+        w0,
+        wavelength=None,
+        E0=1.0,
+        direction=(0.0, 0.0, -1.0),
+        centre=(0.0, 0.0, 0.0),
+        wavefront_opd=None,
+    ):
+        super().__init__(
+            w0=w0,
+            wavelength=wavelength,
+            spatial_order=2,
+            E0=E0,
+            direction=direction,
+            centre=centre,
+            wavefront_opd=wavefront_opd,
+        )
+
+    def effective_area(self, k=None):
+        """Return the longitudinal-flux area relative to ``E0``.
+
+        Integrating the Poynting flux of Eqs. (16)--(17) over an infinite
+        transverse plane gives ``pi/k**2``.  It is frequency-dependent for a
+        broadband pulse.
+        """
+        if k is None:
+            k = self.k
+        if k is None:
+            raise ValueError("a positive wavenumber is required")
+        k = np.asarray(k, dtype=float)
+        if np.any(~np.isfinite(k)) or np.any(k <= 0):
+            raise ValueError("a positive wavenumber is required")
+        return np.pi / k**2
+
+    def fields(self, points, *, k=None, amplitude=None, spectral_phase=0.0):
+        """Evaluate the TM01 electric and magnetic phasors at ``points``."""
+        points = np.asarray(points, dtype=float)
+        if points.ndim != 2 or points.shape[1] != 3:
+            raise ValueError("points must have shape (n, 3)")
+        if k is None:
+            k = self.k
+        if k is None or k <= 0:
+            raise ValueError("a positive wavenumber is required")
+        if amplitude is None:
+            amplitude = self.E0
+
+        relative = points - self.centre
+        longitudinal = relative @ self.direction
+        transverse = relative - longitudinal[:, None] * self.direction
+        radius_squared = np.sum(transverse**2, axis=1)
+        phase_argument = k * longitudinal + spectral_phase
+        if self.wavefront_opd is not None:
+            opd = np.asarray(self.wavefront_opd(points), dtype=float)
+            if opd.shape != (len(points),) or not np.all(np.isfinite(opd)):
+                raise ValueError("wavefront_opd must return one finite value per point")
+            phase_argument = phase_argument + k * opd
+
+        scalar = (
+            2
+            * amplitude
+            / (k * self.w0**2)
+            * np.exp(-radius_squared / self.w0**2 + 1j * phase_argument)
+        )
+        longitudinal_term = (-2j / k * (radius_squared / self.w0**2 - 1))[
+            :, None
+        ] * self.direction
+        electric = scalar[:, None] * (transverse + longitudinal_term)
+        magnetic = np.cross(self.direction, electric) / C
+        return electric, magnetic
+
+
 def electric_from_magnetic_tm(By, x, z, k, *, edge_order=2):
     """Recover ``Ex`` and ``Ez`` from a regularly sampled ``By`` phasor.
 

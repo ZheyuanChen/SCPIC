@@ -216,6 +216,40 @@ The useful functionality was instead implemented within SCPIC's existing API:
   performance parity on a GPU remain to be verified before production use.
 
 The direct `pytest` console entry point now includes the repository root via
-the project configuration, matching `python -m pytest`. The remaining paper
-work is a converged radial-polarisation and HNAP/TP reproduction; the remaining
-performance work is a NumPy/CuPy comparison on CUDA hardware.
+the project configuration, matching `python -m pytest`. At this stage the
+paper's radial and HNAP/TP cases still required converged benchmarks; the
+remaining performance work was a NumPy/CuPy comparison on CUDA hardware.
+
+---
+
+## Phase 10: Complete Vallières Benchmark Suite (July 2026)
+
+The outstanding paper reproduction has now been completed for all six entries
+in Vallières *et al.* Tables 1--2:
+
+* `TM01RadiallyPolarisedBeam3D` implements Eqs. (16)--(17), including the
+  on-axis longitudinal electric field and the azimuthal magnetic field. This
+  is distinct from the retained reduced transverse radial-envelope class.
+* Broadband TM01 energy normalisation now uses the exact frequency-dependent
+  longitudinal-flux area, `pi/k_n**2`; the spectrum API accepts either a
+  scalar area or one area per spectral component and recovers 20 J in both
+  cases.
+* Mirror factories now encode the paper's 58 mm HNAP and the optimal 20% TP.
+  The latter derives an 89.44 mm opening and 20 mm parent focal length from
+  the paper's geometry equations instead of embedding rounded values.
+* `paper_benchmark_3d.py` evaluates linear or TM01 input on HNAP, OAP90 or TP,
+  provides a six-case suite, and performs independent surface and spectral
+  convergence studies. The incident intensity FWHM is the paper's 200 mm;
+  the mirror outer diameter remains 220 mm.
+
+At 32×64 surface nodes, 47 frequencies and 161 profile samples, every focal
+width and Rayleigh length is within 2.6% of the published tables. Linear peak
+intensities are within 4.3%, while TM01 peak intensities are 4.8--8.3% below
+the paper. Refining 24×48/31/121 to 32×64/47/161 changes any computed quantity
+by no more than 0.12%, so the remaining TM01 peak discrepancy is not a
+quadrature, spectral or profile-grid convergence artefact.
+
+Six reduced-resolution paper regressions have been added to the test suite,
+alongside direct tests of the TM01 equations, mirror dimensions and broadband
+energy recovery. The standalone 2D TM reduction and the EPOCH export paths are
+unchanged by this phase.

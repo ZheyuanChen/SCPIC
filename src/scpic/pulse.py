@@ -79,32 +79,43 @@ class SuperGaussianSpectrum:
         """Return peak incident electric-field phasors for each frequency.
 
         With the paper's positive-frequency convention, each component has
-        time-averaged Poynting flux ``2*eps0*c*|E_n|**2``.  The returned
-        amplitudes therefore recover ``total_energy`` over ``period``.
+        time-averaged Poynting flux ``2*eps0*c*|E_n|**2``. ``effective_area``
+        may be one scalar or one value per frequency. The returned amplitudes
+        therefore recover ``total_energy`` over ``period``.
         """
-        if effective_area <= 0:
-            raise ValueError("effective_area must be positive")
-        normalisation = self.total_energy / (
-            self.period
-            * 2
-            * EPSILON_0
-            * C
-            * effective_area
-            * np.sum(self.relative_energy_density)
+        effective_area = np.asarray(effective_area, dtype=float)
+        if effective_area.ndim > 1 or (
+            effective_area.ndim == 1
+            and effective_area.shape != self.angular_frequencies.shape
+        ):
+            raise ValueError("effective_area must be scalar or match the spectrum")
+        if np.any(~np.isfinite(effective_area)) or np.any(effective_area <= 0):
+            raise ValueError("effective_area must be positive and finite")
+        common_normalisation = self.total_energy / (
+            self.period * 2 * EPSILON_0 * C * np.sum(self.relative_energy_density)
         )
-        return np.sqrt(normalisation * self.relative_energy_density)
+        return np.sqrt(
+            common_normalisation * self.relative_energy_density / effective_area
+        )
 
     def recovered_energy(self, amplitudes, effective_area):
         amplitudes = np.asarray(amplitudes)
         if amplitudes.shape != self.angular_frequencies.shape:
             raise ValueError("amplitudes must match the spectrum")
+        effective_area = np.asarray(effective_area, dtype=float)
+        if effective_area.ndim > 1 or (
+            effective_area.ndim == 1
+            and effective_area.shape != self.angular_frequencies.shape
+        ):
+            raise ValueError("effective_area must be scalar or match the spectrum")
+        if np.any(~np.isfinite(effective_area)) or np.any(effective_area <= 0):
+            raise ValueError("effective_area must be positive and finite")
         return float(
             self.period
             * 2
             * EPSILON_0
             * C
-            * effective_area
-            * np.sum(np.abs(amplitudes) ** 2)
+            * np.sum(effective_area * np.abs(amplitudes) ** 2)
         )
 
 

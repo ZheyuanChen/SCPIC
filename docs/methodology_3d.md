@@ -2,8 +2,9 @@
 
 ## Scope
 
-The 3D path implements the linearly polarised, perfect-conductor physical-optics
-method used by Vallières *et al.* (2023), building on Dumont *et al.* (2017).
+The 3D path implements the linearly and radially polarised,
+perfect-conductor physical-optics method used by Vallières *et al.* (2023),
+building on Dumont *et al.* (2017).
 It accepts an upstream collimated super-Gaussian beam, evaluates the reflected
 vector field on an arbitrary observation grid, and reconstructs an
 energy-normalised broadband pulse. The original 2D TM solver remains available
@@ -20,6 +21,9 @@ parent axis; `TP` may be annular. The `OAP90` aperture is centred at
 \((2f_0,0)\), so a chief ray travelling along \(-z\) reflects along \(-x\).
 The Vallières OAP has \(f_0=57.5\) mm and \(D=220\) mm, giving the reported
 115 mm effective focal length and 5 mm nearest approach to the parent axis.
+The HNAP uses \(f_0=58\) mm. For the optimal 20% TP, Eqs. (6)--(7) give
+\(D_{\mathrm{in}}=200\sqrt{0.2}=89.44\) mm and \(f_0=20\) mm for a 5 mm focus
+margin. These are available through the three `vallieres_*` mirror factories.
 
 ## Stratton--Chu fields
 
@@ -74,12 +78,26 @@ w_0=\frac{w_{\mathrm{FWHM}}}
 {2(\ln2/2)^{1/p}}.
 \]
 
-`RadiallyPolarisedSuperGaussian3D` replaces the fixed polarisation vector by
-the local transverse radial unit vector. Its value is set to zero at the
-single undefined point on the beam axis, which has zero measure in the
-surface and energy integrals.
+`TM01RadiallyPolarisedBeam3D` implements the paper's Eqs. (16)--(17), written
+below in the package coordinates for propagation along \(-z\):
 
-Both incident-field classes accept `wavefront_opd(points)`, expressed in
+\[
+\mathbf E_{i,n}=\frac{2E_{0,n}}{k_nw_0^2}e^{-(r/w_0)^2-ik_nz}
+\left[r\hat{\mathbf r}+\frac{2i}{k_n}
+\left(\frac{r^2}{w_0^2}-1\right)\hat{\mathbf z}\right],
+\qquad
+\mathbf B_{i,n}=-\frac{E_{r,n}}{c}\hat{\boldsymbol\phi}.
+\]
+
+The implementation generalises this to any propagation direction. Its radial
+field vanishes continuously on axis and the longitudinal component is
+retained. The longitudinal-flux effective area relative to \(E_{0,n}\) is
+\(A_{\mathrm{eff},n}=\pi/k_n^2\), so broadband component normalisation accepts
+one effective area per frequency. `RadiallyPolarisedSuperGaussian3D` is kept
+as a reduced transverse-envelope model, but must not be used to claim a
+reproduction of the paper's TM01 cases.
+
+All incident-field classes accept `wavefront_opd(points)`, expressed in
 metres. A spectral component of wavenumber (k_n) receives the phase
 (+k_n\,\mathrm{OPD}), so a single measured surface map remains physically
 consistent across the bandwidth. `ZernikeWavefront` supplies orthonormal
@@ -116,20 +134,28 @@ than representing an exact analytic tolerance.
 
 ## Reproduction status
 
-`paper_benchmark_3d.py` reproduces Table 1's linearly polarised OAP90 case.
-With the workstation defaults it gives:
+`paper_benchmark_3d.py --suite` reproduces all six cases in Tables 1--2. A
+32×64 surface quadrature, 47 spectral components and 161-point profiles give:
 
-| Quantity | SCPIC | Vallières *et al.* | Difference |
-|---|---:|---:|---:|
-| Peak intensity | 2.663 × 10²³ W/cm² | 2.66 × 10²³ W/cm² | +0.1% |
-| Meridional FWHM | 0.600 µm | 0.600 µm | +0.02% |
-| Sagittal FWHM | 0.503 µm | 0.520 µm | −3.4% |
-| Rayleigh length | 0.650 µm | 0.690 µm | −5.8% |
+| Input | Mirror | Peak (SCPIC/paper), 10²³ W/cm² | FWHM x (SCPIC/paper), µm | FWHM y (SCPIC/paper), µm | zR (SCPIC/paper), µm |
+|---|---|---:|---:|---:|---:|
+| Linear | HNAP | 5.230 / 5.03 | 0.620 / 0.62 | 0.331 / 0.33 | 0.395 / 0.39 |
+| Linear | OAP90 | 2.772 / 2.66 | 0.606 / 0.60 | 0.521 / 0.52 | 0.692 / 0.69 |
+| Linear | TP | 1.545 / 1.49 | 0.877 / 0.87 | 1.262 / 1.26 | 0.570 / 0.56 |
+| TM01 | HNAP | 3.807 / 4.13 | 0.344 / 0.35 | 0.344 / 0.35 | 0.458 / 0.45 |
+| TM01 | OAP90 | 1.018 / 1.07 | 0.673 / 0.69 | 0.663 / 0.68 | 0.526 / 0.53 |
+| TM01 | TP | 2.247 / 2.45 | 0.378 / 0.37 | 0.378 / 0.37 | 0.558 / 0.56 |
 
-These are strong checks of the geometry, phase, vector integral and pulse
-normalisation, but they are not a complete reproduction of the paper. Radial
-polarisation and arbitrary measured/Zernike wavefronts are now supported, but
-the paper's full radial-polarisation and HNAP/TP numerical comparisons remain
-to be run. Production results should include explicit convergence in surface
-quadrature, spectral sampling, observation-grid spacing and, when relevant,
-the interpolation of measured wavefront data.
+Thus all spot sizes and Rayleigh lengths agree within 2.6%; linear peak
+intensities agree within 4.3% and TM01 peaks within 8.3%. Independent
+refinements were run for every case. Moving from 12×24 to 24×48 surface nodes
+changes any reported quantity by at most 0.077%. Moving from 31 to 47 spectral
+components changes peak intensity by 0.091% and every width by at most 0.003%.
+The combined workstation-to-fine refinement (24×48/31/121 to
+32×64/47/161) changes any result by at most 0.12%.
+
+This is a close numerical reproduction, not bitwise identity with the private
+StrattoCalculator. The residual 5--8% TM01 peak difference is not a numerical
+convergence error at these settings and may reflect unpublished discretisation
+or normalisation details. Measured-wavefront studies still require their own
+map-interpolation and aperture convergence checks.

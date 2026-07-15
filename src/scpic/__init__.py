@@ -6,6 +6,7 @@ from .fields import (
     IncidentFieldTM,
     LinearPolarisedSuperGaussian3D,
     RadiallyPolarisedSuperGaussian3D,
+    TM01RadiallyPolarisedBeam3D,
     ZernikeWavefront,
     electric_from_magnetic_tm,
 )
@@ -26,6 +27,7 @@ __all__ = [
     "IncidentFieldTM",
     "LinearPolarisedSuperGaussian3D",
     "RadiallyPolarisedSuperGaussian3D",
+    "TM01RadiallyPolarisedBeam3D",
     "ZernikeWavefront",
     "MaxwellResiduals",
     "ParabolicMirror2D",

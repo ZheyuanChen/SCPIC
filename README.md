@@ -24,14 +24,15 @@ python -m venv .venv
 .venv/bin/pip install -e '.[dev]'
 .venv/bin/python -m pytest -q
 .venv/bin/python benchmark.py
-.venv/bin/python paper_benchmark_3d.py
+.venv/bin/python paper_benchmark_3d.py --suite
+.venv/bin/python paper_benchmark_3d.py --convergence --mirror OAP90 --polarisation radial
 ```
 
 The first benchmark checks the 2D PEC physical-optics solution against an
-analytical paraxial Gaussian waist. The second reconstructs the 20 J,
-800 nm OAP90 case from Vallières *et al.* and compares its intensity and focal
-dimensions with their Table 1. `main.py` generates a static EPOCH2D injection
-profile:
+analytical paraxial Gaussian waist. The second reconstructs all six 20 J,
+800 nm HNAP, OAP90 and TP cases from Tables 1--2 of Vallières *et al.* for
+linear and exact TM01 radial input. `main.py` generates a static EPOCH2D
+injection profile:
 
 ```bash
 .venv/bin/python main.py
@@ -56,7 +57,7 @@ wavelength = 800e-9
 mirror = ParabolicMirror3D.vallieres_oap90()
 surface = mirror.surface_quadrature(n_radial=24, n_azimuthal=48)
 incident = LinearPolarisedSuperGaussian3D.from_intensity_fwhm(
-    mirror.D,
+    200e-3,
     wavelength=wavelength,
     spatial_order=16,
     centre=(*mirror.aperture_centre, 0.0),
@@ -89,9 +90,13 @@ incident = LinearPolarisedSuperGaussian3D.from_intensity_fwhm(
 )
 ```
 
-`RadiallyPolarisedSuperGaussian3D` provides the corresponding radial input
-mode. Any callable returning one finite OPD value per point can replace
-`ZernikeWavefront`, allowing measured maps to be interpolated onto the mirror.
+`TM01RadiallyPolarisedBeam3D` implements the exact incident model in Eqs.
+(16)--(17) of Vallières *et al.*, including its longitudinal electric field
+and frequency-dependent energy normalisation. The older
+`RadiallyPolarisedSuperGaussian3D` remains available as a deliberately simpler
+transverse radial envelope; it is not the paper's TM01 model. Any callable
+returning one finite OPD value per point can replace `ZernikeWavefront`,
+allowing measured maps to be interpolated onto the mirror.
 
 For large observation grids, `evaluate_SC_3D(..., backend="cupy")` uses a
 locally installed CuPy build and transfers one observation chunk at a time to
