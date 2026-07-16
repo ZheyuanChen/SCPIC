@@ -10,12 +10,14 @@ from scpic import (
     SampledSpectrum,
     SuperGaussianSpectrum,
     TM01RadiallyPolarisedBeam3D,
+    epoch_amplitude_phase,
     electromagnetic_energy_density,
     integrated_field_energy,
     integrated_poynting_flux,
     observation_partition,
     propagate_broadband_3d,
     reconstruct_analytic_signal,
+    reconstruct_complex_envelope,
     relative_energy_error,
     surface_quadrature_convergence,
     time_domain_maxwell_residuals,
@@ -65,6 +67,50 @@ def test_exact_super_gaussian_conversion_is_opt_in():
     assert narrowband.recovered_energy(
         narrowband.component_amplitudes(0.02), 0.02
     ) == pytest.approx(20.0)
+
+
+def test_carrier_referenced_envelope_recovers_analytic_signal():
+    frequencies = np.array([2.0, 2.5, 3.0])
+    carrier = 2.4
+    times = np.array([-0.3, 0.0, 0.2])
+    components = np.array(
+        [
+            [1.0 + 0.5j, 0.2 - 0.3j],
+            [-0.4 + 0.1j, 0.7 + 0.2j],
+            [0.6 - 0.2j, -0.1 + 0.4j],
+        ]
+    )
+    envelope = reconstruct_complex_envelope(
+        components,
+        frequencies,
+        times,
+        carrier,
+    )
+    analytic = reconstruct_analytic_signal(components, frequencies, times)
+    np.testing.assert_allclose(
+        envelope * np.exp(-1j * carrier * times)[:, None],
+        analytic,
+    )
+    exported_amplitude, exported_phase, field_scale = epoch_amplitude_phase(envelope)
+    epoch_field = (
+        field_scale
+        * exported_amplitude
+        * np.sin(carrier * times[:, None] + exported_phase)
+    )
+    np.testing.assert_allclose(
+        epoch_field,
+        np.real(envelope * np.exp(-1j * carrier * times)[:, None]),
+    )
+
+    spectrum = SuperGaussianSpectrum.from_wavelength_bandwidth(
+        central_wavelength=800e-9,
+        wavelength_fwhm=90e-9,
+        n_components=9,
+    )
+    carrier = 2 * np.pi * C / 800e-9
+    assert spectrum.envelope_nyquist_timestep(carrier) > spectrum.nyquist_timestep
+    envelope_times = np.linspace(-20e-15, 20e-15, 81)
+    spectrum.validate_envelope_time_samples(envelope_times, carrier)
 
 
 def test_finite_rayleigh_tm01_reduces_to_collimated_model_at_waist():
@@ -214,6 +260,24 @@ def test_memory_bounded_broadband_propagation_matches_direct_reconstruction():
     np.testing.assert_allclose(result.magnetic, reference_b)
     assert observation_partition(10, rank=0, size=3) == slice(0, 4)
     assert observation_partition(10, rank=2, size=3) == slice(7, 10)
+
+    carrier = 2 * np.pi * C / wavelength
+    envelope_result = propagate_broadband_3d(
+        observations,
+        surface,
+        incident,
+        spectrum,
+        [0.0, 0.25e-15],
+        carrier_angular_frequency=carrier,
+        observation_chunk_size=2,
+    )
+    envelope_reference = reconstruct_complex_envelope(
+        np.asarray(components_e),
+        spectrum.angular_frequencies,
+        [0.0, 0.25e-15],
+        carrier,
+    )
+    np.testing.assert_allclose(envelope_result.electric, envelope_reference)
 
 
 def test_surface_convergence_uses_combined_field_metric():

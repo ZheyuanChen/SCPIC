@@ -61,6 +61,22 @@ def test_epoch_phase_conversion_reconstructs_physical_field():
         np.testing.assert_allclose(actual, expected, atol=2e-15)
 
 
+def test_epoch_phase_is_unwrapped_for_linear_interpolation():
+    source_phase = np.linspace(-4 * np.pi, 4 * np.pi, 33)
+    field = np.exp(1j * source_phase)
+    amplitude, phase, scale = epoch_amplitude_phase(field)
+
+    assert np.max(np.abs(np.diff(phase))) < np.pi
+    omega_t = 0.37
+    expected = np.real(field * np.exp(-1j * omega_t))
+    actual = scale * amplitude * np.sin(omega_t + phase)
+    np.testing.assert_allclose(actual, expected, atol=4e-15)
+
+    _, wrapped, _ = epoch_amplitude_phase(field, unwrap_phase=False)
+    assert np.all(wrapped >= -np.pi)
+    assert np.all(wrapped < np.pi)
+
+
 def test_epoch_export_is_float64_headerless_and_c_ordered(tmp_path):
     field = np.array([[1.0 + 0.0j, 0.0 + 1.0j, -1.0 + 0.0j], [1.0 - 1.0j, 0.5j, 0.0j]])
     result = export_epoch_profile(tmp_path, field)
@@ -87,6 +103,8 @@ def test_epoch_export_rejects_wrong_precision_and_undersized_scale(tmp_path):
         export_field_binary(tmp_path / "field", field, dtype=np.float32)
     with pytest.raises(ValueError, match="phase_reference"):
         epoch_amplitude_phase(field, phase_reference=np.nan)
+    with pytest.raises(TypeError, match="unwrap_phase"):
+        epoch_amplitude_phase(field, unwrap_phase="yes")
 
 
 def test_paraxial_pec_reflector_matches_gaussian_waist():

@@ -60,6 +60,16 @@ class _DiscreteSpectrumMethods:
         """Largest time step resolving the highest optical frequency."""
         return np.pi / self.angular_frequencies[-1]
 
+    def envelope_nyquist_timestep(self, carrier_angular_frequency):
+        """Largest time step resolving the spectrum relative to a carrier."""
+        carrier = float(carrier_angular_frequency)
+        if not np.isfinite(carrier) or carrier <= 0:
+            raise ValueError("carrier_angular_frequency must be positive and finite")
+        maximum_detuning = np.max(np.abs(self.angular_frequencies - carrier))
+        if maximum_detuning == 0:
+            return np.inf
+        return float(np.pi / maximum_detuning)
+
     def with_spectral_phase(self, spectral_phase):
         """Return a copy carrying ``phi(omega)`` in radians.
 
@@ -121,14 +131,24 @@ class _DiscreteSpectrumMethods:
 
     def validate_time_samples(self, times):
         """Reject a time grid that aliases the carrier or spans one period."""
+        self._validate_time_samples(times, self.nyquist_timestep)
+
+    def validate_envelope_time_samples(self, times, carrier_angular_frequency):
+        """Validate a time grid for a carrier-referenced complex envelope."""
+        self._validate_time_samples(
+            times,
+            self.envelope_nyquist_timestep(carrier_angular_frequency),
+        )
+
+    def _validate_time_samples(self, times, maximum_timestep):
         times = np.asarray(times, dtype=float)
         if times.ndim != 1 or len(times) < 1 or np.any(~np.isfinite(times)):
             raise ValueError("times must be a finite one-dimensional array")
         if len(times) > 1:
             if np.any(np.diff(times) <= 0):
                 raise ValueError("times must be strictly increasing")
-            if np.max(np.diff(times)) > self.nyquist_timestep * (1 + 1e-12):
-                raise ValueError("time spacing does not resolve the optical carrier")
+            if np.max(np.diff(times)) > maximum_timestep * (1 + 1e-12):
+                raise ValueError("time spacing does not resolve the represented field")
             if times[-1] - times[0] >= self.period:
                 raise ValueError("time span must be shorter than the discrete period")
 
@@ -374,6 +394,33 @@ def reconstruct_analytic_signal(components, angular_frequencies, times):
     if components.ndim < 1 or components.shape[0] != len(frequencies):
         raise ValueError("the first component axis must match angular_frequencies")
     phase = np.exp(-1j * times[:, None] * frequencies[None, :])
+    return 2 * np.tensordot(phase, components, axes=(1, 0))
+
+
+def reconstruct_complex_envelope(
+    components,
+    angular_frequencies,
+    times,
+    carrier_angular_frequency,
+):
+    """Reconstruct the envelope relative to a selected carrier frequency.
+
+    The returned field is
+    ``2*sum(E_n exp[-i*(omega_n-omega_carrier)*t])``.  Multiplying it by
+    ``exp(-i*omega_carrier*t)`` recovers the analytic signal.  This is the
+    correct quantity to split into amplitude and phase for EPOCH-mod's
+    spatiotemporal reader because EPOCH supplies the carrier oscillation
+    internally.
+    """
+    components = np.asarray(components, dtype=complex)
+    frequencies = np.asarray(angular_frequencies, dtype=float)
+    times = np.atleast_1d(np.asarray(times, dtype=float))
+    carrier = float(carrier_angular_frequency)
+    if components.ndim < 1 or components.shape[0] != len(frequencies):
+        raise ValueError("the first component axis must match angular_frequencies")
+    if not np.isfinite(carrier) or carrier <= 0:
+        raise ValueError("carrier_angular_frequency must be positive and finite")
+    phase = np.exp(-1j * times[:, None] * (frequencies[None, :] - carrier))
     return 2 * np.tensordot(phase, components, axes=(1, 0))
 
 

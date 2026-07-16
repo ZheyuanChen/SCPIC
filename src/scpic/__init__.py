@@ -43,6 +43,7 @@ from .pulse import (
     SuperGaussianSpectrum,
     electric_intensity,
     reconstruct_analytic_signal,
+    reconstruct_complex_envelope,
 )
 from .solvers import evaluate_SC_2D, evaluate_SC_3D
 
@@ -82,4 +83,5 @@ __all__ = [
     "evaluate_SC_3D",
     "export_epoch_profile",
     "reconstruct_analytic_signal",
+    "reconstruct_complex_envelope",
 ]

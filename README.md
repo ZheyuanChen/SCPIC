@@ -18,7 +18,9 @@ physical field = Re[phasor * exp(-i omega t)]
 The EPOCH modification instead injects `amplitude * sin(omega t + phase)`.
 `export_epoch_profile()` performs the required conversion
 `phase_epoch = pi/2 - angle(phasor)` and writes normalised amplitude plus phase
-as headerless native `float64` streams.
+as headerless native `float64` streams. Phase is unwrapped along every file
+axis by default because EPOCH interpolates it linearly; wrapping to
+`[-pi, pi)` would create false ramps at branch cuts.
 
 ## Installation and checks
 
@@ -143,6 +145,12 @@ spectral intermediates. This bounds working memory by the chunk size rather
 than the complete injection plane or focal volume. `propagate_broadband_3d()`
 collects those chunks when the reconstructed local result fits in memory.
 
+The default reconstruction includes the optical carrier and is intended for
+field diagnostics. For an EPOCH spatiotemporal file, pass
+`carrier_angular_frequency=omega0`. This returns the slowly varying complex
+envelope because EPOCH supplies `omega0 * time` internally. Exporting the full
+analytic signal would apply the carrier twice.
+
 An mpi4py communicator can be supplied without changing the numerical kernel:
 
 ```python
@@ -207,9 +215,25 @@ transfers one observation chunk at a time to the GPU. CuPy must be installed
 separately to match the machine's CUDA version; the default NumPy path remains
 the tested reference implementation.
 
-See [`docs/methodology_3d.md`](docs/methodology_3d.md) for equations,
-conventions, benchmark results and current limitations. The existing-code
-survey is in [`docs/literature_review.md`](docs/literature_review.md).
+## Documentation
+
+| Document | Purpose |
+|---|---|
+| [`docs/index.md`](docs/index.md) | Documentation map and release status |
+| [`docs/user_guide.md`](docs/user_guide.md) | End-to-end optical and EPOCH workflow |
+| [`docs/validation.md`](docs/validation.md) | Convergence, Maxwell, energy, paper, and EPOCH acceptance |
+| [`docs/api_reference.md`](docs/api_reference.md) | Public classes, functions, shapes, and return values |
+| [`docs/methodology_3d.md`](docs/methodology_3d.md) | Equations and benchmark evidence |
+| [`epoch_tests/README.md`](epoch_tests/README.md) | Local EPOCH2D and EPOCH3D integration tests |
+| [`docs/literature_review.md`](docs/literature_review.md) | Related papers and implementations |
+| [`docs/roadmap.md`](docs/roadmap.md) | Worthwhile but intentionally deferred features |
+
+The most important remaining scientific development is a full-vector interior
+current-sheet injector inside EPOCH. It is not a missing optical-solver feature:
+it is needed because `simple_laser` cannot directly impose the longitudinal
+electric field of a near-unity-NA focus. Measured-instrument adapters and
+CUDA/MPI production validation are also worthwhile, but depend on representative
+data formats or suitable hardware.
 
 ## EPOCH mapping
 
@@ -227,6 +251,11 @@ must be:
 
 No transpose or header is required. EPOCH-mod hard-codes eight bytes per real,
 so SCPIC deliberately rejects `float32` export.
+
+Static files contain a monochromatic complex phasor. Spatiotemporal files must
+contain a complex envelope relative to the `lambda`/carrier specified in the
+EPOCH deck. If the temporal envelope is already present in the file, omit
+`t_profile`; otherwise EPOCH multiplies the two envelopes.
 
 Three EPOCH2D and three EPOCH3D workstation-sized cases cover array ordering,
 sign-sensitive phase gradients and complete SCPIC focus paths. See

@@ -323,3 +323,71 @@ broadband equivalence, observation partitioning and whole-grid convergence.
 The complete local suite passes with 41 tests. GPU execution, multi-rank MPI
 I/O and a large 25-wavelength focused-volume energy calculation remain runtime
 validation tasks for suitable hardware; they are not inferred from unit tests.
+
+---
+
+## Phase 12: Operational Documentation and Release Boundary (July 2026)
+
+The public API and repository examples were audited against the work required
+for a real EPOCH profile campaign. No additional optical feature was identified
+as a correctness blocker for the supported perfect-conductor workflow. The
+remaining high-value development was separated into explicit future projects:
+
+* a full-vector EPOCH interior current-sheet or antenna injector, because
+  `simple_laser` cannot impose the high-NA longitudinal electric field;
+* measured wavefront, near-field and coating adapters built from representative
+  instrument files rather than assumed formats;
+* declarative campaign configuration and provenance capture;
+* production CUDA and multi-rank MPI scaling and I/O validation;
+* arbitrary surfaces, multiple reflectors and general spatiotemporal coupling.
+
+A detailed documentation set was added:
+
+* `docs/index.md` maps the documentation and states the supported release
+  boundary;
+* `docs/user_guide.md` gives the end-to-end 2D/3D, monochromatic/broadband,
+  wavefront, convergence, MPI, export and diagnostic workflow;
+* `docs/validation.md` defines the validation ladder and campaign acceptance
+  record;
+* `docs/api_reference.md` records the public objects, array shapes and return
+  values;
+* `docs/roadmap.md` distinguishes worthwhile extensions from unsafe silent
+  defaults.
+
+The guide records common convention failures, including the wavelength-density
+Jacobian, TM01 coefficient meaning, reflective surface-height factor, EPOCH
+array order, cosine-to-sine phase conversion and analytic-signal energy
+factors. It also provides a minimum production checklist and specifies the
+metadata that should accompany every generated profile.
+
+During the documentation audit, the EPOCH-mod time-dependent reader was checked
+again at source level. It supplies `omega*time` internally and multiplies any
+deck `t_profile` by the file amplitude. `reconstruct_complex_envelope` and the
+matching `carrier_angular_frequency` broadband option were therefore added.
+They reconstruct
+`2*sum(E_n*exp[-i*(omega_n-omega_carrier)*t])`, preventing accidental
+double application of the carrier. Spectrum objects now expose an
+envelope-detuning Nyquist timestep and a separate envelope time-grid
+validator. A regression verifies that multiplying the envelope by
+`exp(-i*omega_carrier*t)` recovers the original analytic signal exactly.
+
+The phase writer was also changed to unwrap phase along every profile axis by
+default. EPOCH interpolates the stored phase as an ordinary real number, so a
+wrapped `[-pi,pi)` branch cut produces incorrect intermediate values even
+though the samples themselves differ only by `2*pi`. An opt-out remains for
+callers that manage phase continuity themselves, and a regression checks both
+continuous interpolation output and exact sample-point reconstruction.
+
+The local EPOCH suites were rerun with two MPI ranks after this change. All six
+cases loaded and completed. The 2D OAP smoke test changed from the historical
+wrapped-phase result to 1.066 µm FWHM against 0.944 µm in SCPIC, reducing the
+coarse discrepancy to 13.0%. The 3D result became 1.117 µm and 1.106 µm
+against 1.247 µm and 1.249 µm; the sign-sensitive phase tilts remained correct
+at +9.53° and -5.94°. These are still boundary and grid smoke tests rather
+than production convergence evidence.
+
+Final release checks completed with 43 unit and regression tests passing,
+successful byte-code compilation, and a clean formatting and whitespace
+audit. The full six-case Vallières benchmark was also rerun: focal widths and
+Rayleigh lengths remain within 2.6% of the paper, linear peak intensities
+within 4.2%, and TM01 peak intensities within 8.4%.

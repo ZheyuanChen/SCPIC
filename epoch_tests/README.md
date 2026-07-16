@@ -41,6 +41,12 @@ The cases form a staged validation:
    reports the measured discrepancy; production acceptance should be tightened
    after a grid-convergence study.
 
+With the current continuous phase export, the coarse `scpic_focus` result is
+1.066 µm in EPOCH versus a 0.944 µm direct SCPIC reference, a 13.0%
+difference. The static Gaussian remains 2.121 µm with median
+`Ey/Bz = 3.0394e8 m/s`, and the phase-ramp Poynting angle remains +11.08° for
+the +10° target.
+
 Passing these cases proves file compatibility and provides a first propagation
 check; it does **not** prove exact high-NA injection. EPOCH's `simple_laser`
 boundary generates its own magnetic field from one transverse electric profile
@@ -73,7 +79,8 @@ way as the 2D runner. Generated data live under `epoch_tests/runs_3d/`.
 
 All three cases pass with the local EPOCH3D build. On the present coarse grids,
 the static fitted field waists are 2.474 µm and 1.438 µm for targets of
-2.5 µm and 1.5 µm; the phase-tilt Poynting angles are +9.23° and −5.76°; and
-the propagated OAP focus has 1.187 µm FWHM on both axes versus direct SCPIC
-references of 1.247 µm and 1.249 µm. These tolerances should be tightened in a
-future grid-convergence study.
+2.5 µm and 1.5 µm; the phase-tilt Poynting angles are +9.53° and −5.94°; and
+the propagated OAP focus has 1.117 µm and 1.106 µm FWHM versus direct SCPIC
+references of 1.247 µm and 1.249 µm. These results use continuous unwrapped
+phase files. The tolerances should be tightened in a future grid-convergence
+study.

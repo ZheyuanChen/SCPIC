@@ -139,6 +139,26 @@ The analytic signal is \(2\sum_n\mathbf E_n e^{-i\omega_nt}\), and its
 instantaneous envelope intensity is
 \(I=\epsilon_0c|\widetilde{\mathbf E}|^2/2\).
 
+For EPOCH spatiotemporal export, SCPIC instead reconstructs a complex envelope
+relative to the carrier configured in the deck:
+
+\[
+\widetilde{\mathbf E}_{\rm env}(t)
+=2\sum_n\mathbf E_n e^{-i(\omega_n-\omega_c)t}.
+\]
+
+Then
+\(\widetilde{\mathbf E}_{\rm analytic}
+=\widetilde{\mathbf E}_{\rm env}e^{-i\omega_ct}\).
+This separation is essential because EPOCH adds \(\omega_ct\) internally.
+The envelope Nyquist limit depends on the maximum detuning rather than the
+optical carrier.
+
+The EPOCH exporter unwraps the converted phase along every stored axis. This
+does not change the field at a sample because it adds only integer multiples
+of \(2\pi\), but it prevents EPOCH's linear interpolator from crossing a
+wrapped branch cut through physically incorrect intermediate phases.
+
 The default `conversion="narrowband"` preserves the Vallières construction.
 For spectra defined in wavelength, `conversion="exact_wavelength_density"`
 uses

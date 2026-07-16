@@ -16,7 +16,13 @@ class EpochProfileExport:
     field_scale: float
 
 
-def epoch_amplitude_phase(field, *, field_scale=None, phase_reference=0.0):
+def epoch_amplitude_phase(
+    field,
+    *,
+    field_scale=None,
+    phase_reference=0.0,
+    unwrap_phase=True,
+):
     """Convert an SCPIC phasor to normalised EPOCH amplitude and phase.
 
     SCPIC uses ``Re[F exp(-i omega t)]`` while EPOCH-mod injects
@@ -24,6 +30,17 @@ def epoch_amplitude_phase(field, *, field_scale=None, phase_reference=0.0):
     ``pi/2 - (angle(F) - phase_reference)``.  ``field_scale`` is the EPOCH
     laser's peak electric-field amplitude; if omitted, the peak magnitude of
     ``field`` is used.  Returned amplitudes are therefore in ``[0, 1]``.
+
+    For a static profile, ``field`` is a monochromatic complex phasor.  For a
+    spatiotemporal profile, it must be the complex envelope relative to the
+    carrier configured in the EPOCH laser block, not a full analytic signal:
+    EPOCH adds ``omega*t`` internally.
+
+    EPOCH linearly interpolates phase as an ordinary real number.  Therefore
+    the phase is unwrapped along every array axis by default; a wrapped
+    ``[-pi, pi)`` representation would create false interpolation ramps at
+    each branch cut.  Set ``unwrap_phase=False`` only when the caller will
+    handle phase continuity separately.
     """
     field = np.asarray(field)
     if field.ndim not in {1, 2, 3}:
@@ -34,6 +51,8 @@ def epoch_amplitude_phase(field, *, field_scale=None, phase_reference=0.0):
     phase_reference = float(phase_reference)
     if not np.isfinite(phase_reference):
         raise ValueError("phase_reference must be finite")
+    if not isinstance(unwrap_phase, (bool, np.bool_)):
+        raise TypeError("unwrap_phase must be boolean")
 
     magnitude = np.abs(field)
     peak = float(np.max(magnitude))
@@ -47,7 +66,11 @@ def epoch_amplitude_phase(field, *, field_scale=None, phase_reference=0.0):
 
     amplitude = magnitude / field_scale
     phase = np.pi / 2 - (np.angle(field) - phase_reference)
-    phase = (phase + np.pi) % (2 * np.pi) - np.pi
+    if unwrap_phase:
+        for axis in range(phase.ndim):
+            phase = np.unwrap(phase, axis=axis)
+    else:
+        phase = (phase + np.pi) % (2 * np.pi) - np.pi
     phase = np.where(magnitude == 0, 0.0, phase)
     return amplitude.astype(np.float64), phase.astype(np.float64), field_scale
 
@@ -58,6 +81,7 @@ def export_epoch_profile(
     *,
     field_scale=None,
     phase_reference=0.0,
+    unwrap_phase=True,
     amplitude_filename="amplitude.dat",
     phase_filename="phase.dat",
 ):
@@ -68,11 +92,20 @@ def export_epoch_profile(
     ``(n_y,)`` for 2D static data, ``(n_t, n_y)`` for 2D spatiotemporal
     data, ``(n_tr2, n_tr1)`` for 3D static data, and
     ``(n_t, n_tr2, n_tr1)`` for 3D spatiotemporal data.
+
+    A time-dependent ``field`` must be a carrier-referenced complex envelope.
+    Use :func:`scpic.reconstruct_complex_envelope` or pass
+    ``carrier_angular_frequency`` to
+    :func:`scpic.iter_broadband_field_chunks`; do not export the full analytic
+    signal because EPOCH supplies the carrier oscillation itself.
     """
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     amplitude, phase, field_scale = epoch_amplitude_phase(
-        field, field_scale=field_scale, phase_reference=phase_reference
+        field,
+        field_scale=field_scale,
+        phase_reference=phase_reference,
+        unwrap_phase=unwrap_phase,
     )
     amplitude_file = directory / amplitude_filename
     phase_file = directory / phase_filename

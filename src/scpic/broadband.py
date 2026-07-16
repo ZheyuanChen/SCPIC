@@ -6,7 +6,7 @@ import numpy as np
 
 from .fields import C
 from .mirrors import ContourQuadrature3D
-from .pulse import reconstruct_analytic_signal
+from .pulse import reconstruct_analytic_signal, reconstruct_complex_envelope
 from .solvers import evaluate_SC_3D
 
 
@@ -82,6 +82,7 @@ def iter_broadband_field_chunks(
     *,
     effective_area=None,
     propagation_phase=0.0,
+    carrier_angular_frequency=None,
     observation_chunk_size=64,
     contours=(),
     communicator=None,
@@ -95,6 +96,12 @@ def iter_broadband_field_chunks(
     phase carried by ``spectrum`` is already included in its complex component
     coefficients.
 
+    By default, reconstructed fields include the full optical carrier.  Set
+    ``carrier_angular_frequency`` to return a complex envelope relative to
+    that carrier instead.  The envelope form is required for EPOCH-mod's
+    spatiotemporal amplitude/phase files because EPOCH supplies its own
+    ``omega*t`` carrier phase.
+
     If an mpi4py-like ``communicator`` is supplied, observations are divided
     contiguously using ``Get_rank()`` and ``Get_size()``.  No MPI dependency is
     imported and no collective operation is performed: each rank can write
@@ -106,6 +113,10 @@ def iter_broadband_field_chunks(
         raise ValueError("observation_points must have shape (n, 3)")
     if times.ndim != 1 or np.any(~np.isfinite(times)):
         raise ValueError("times must be a finite one-dimensional array")
+    if carrier_angular_frequency is not None:
+        carrier_angular_frequency = float(carrier_angular_frequency)
+        if not np.isfinite(carrier_angular_frequency) or carrier_angular_frequency <= 0:
+            raise ValueError("carrier_angular_frequency must be positive and finite")
     if (
         not isinstance(observation_chunk_size, (int, np.integer))
         or observation_chunk_size < 1
@@ -175,14 +186,28 @@ def iter_broadband_field_chunks(
                 B_inc_contours=incident_contour_fields[index],
                 **solver_options,
             )
+        if carrier_angular_frequency is None:
+            reconstruct = reconstruct_analytic_signal
+            reconstruct_options = {}
+        else:
+            reconstruct = reconstruct_complex_envelope
+            reconstruct_options = {
+                "carrier_angular_frequency": carrier_angular_frequency
+            }
         yield BroadbandFieldChunk(
             start=start,
             stop=stop,
-            electric=reconstruct_analytic_signal(
-                electric_components, spectrum.angular_frequencies, times
+            electric=reconstruct(
+                electric_components,
+                spectrum.angular_frequencies,
+                times,
+                **reconstruct_options,
             ),
-            magnetic=reconstruct_analytic_signal(
-                magnetic_components, spectrum.angular_frequencies, times
+            magnetic=reconstruct(
+                magnetic_components,
+                spectrum.angular_frequencies,
+                times,
+                **reconstruct_options,
             ),
         )
 
