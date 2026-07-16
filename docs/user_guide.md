@@ -463,6 +463,41 @@ Confirm the following before using a vendor or wavefront-sensor file:
 Pass the callable as `wavefront_opd=measured_wavefront`. SCPIC applies
 \(+k\,\mathrm{OPD}\) separately at every spectral component.
 
+### Chromatic aberrations and space-time couplings
+
+Use `spatio_spectral_phase(points, angular_frequency)` when the spatial phase
+cannot be written as one fixed OPD map. The callable returns phase in radians:
+
+```python
+from scpic import ChromaticZernikePhase
+
+omega_c = 2 * np.pi * 299_792_458.0 / 800e-9
+chromatic_phase = ChromaticZernikePhase.jolly_angular_dispersion(
+    pupil_radius=mirror.D / 2,
+    pulse_front_tilt=4.25e-15,
+    carrier_angular_frequency=omega_c,
+    centre=(*mirror.aperture_centre, 0.0),
+)
+
+incident = TM01RadiallyPolarisedBeam3D(
+    w0=mirror.D / 2,
+    wavelength=800e-9,
+    centre=(*mirror.aperture_centre, 0.0),
+    spatio_spectral_phase=chromatic_phase,
+)
+```
+
+The `ChromaticZernikePhase` convenience constructors reproduce the input
+phases in equations (44)--(46) of Jolly *et al.* (2025):
+
+- `jolly_angular_dispersion(...)`;
+- `jolly_chromatic_curvature(...)`;
+- `jolly_chromatic_trefoil(...)`.
+
+A fixed OPD and a chromatic phase may be used together. Do not represent one
+physical effect twice. See [space_time_couplings.md](space_time_couplings.md)
+for definitions, units, validation, and current limitations.
+
 ## 9. Convergence
 
 Run convergence on the actual EPOCH injection line or plane and at the
@@ -593,6 +628,20 @@ separate phase-unwrapping method has already produced the desired stored
 values. At exactly zero amplitude the phase is set to zero because it is
 undefined; ensure that a physically important interpolation region is not
 represented by alternating exact-zero and finite-amplitude samples.
+
+For strong space-time coupling, check whether the field contains a resolved
+phase singularity:
+
+```python
+from scpic import epoch_phase_diagnostics
+
+phase_check = epoch_phase_diagnostics(envelope)
+if phase_check.has_phase_singularity:
+    raise RuntimeError("study the required EPOCH phase branch cut explicitly")
+```
+
+A nonzero winding count means that no globally continuous scalar phase exists.
+It does not mean that the optical field is invalid.
 
 ### Array ordering
 
@@ -750,6 +799,7 @@ silently applied to new results.
 - Converging only the focal point and reusing that order for a distant plane.
 - Transposing EPOCH arrays or writing `float32`.
 - Wrapping phase to `[-pi, pi)` before EPOCH's linear interpolation.
+- Assuming that phase unwrapping can remove a genuine space-time vortex.
 - Applying a second cosine-to-sine phase conversion outside the exporter.
 - Exporting a full broadband analytic signal instead of a carrier-referenced
   envelope for EPOCH's spatiotemporal mode.

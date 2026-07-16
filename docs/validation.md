@@ -44,6 +44,8 @@ The suite covers:
 - finite-Rayleigh TM01 reduction at the waist;
 - Gauss--Laguerre power conservation;
 - wavelength-to-frequency Jacobians and spectral phase;
+- Jolly chromatic tilt, curvature, and trefoil phase scaling;
+- position--frequency phase application by every 3D incident-field class;
 - carrier-referenced envelope reconstruction for EPOCH;
 - broadband energy recovery;
 - chunked reconstruction equivalence;
@@ -114,6 +116,14 @@ that:
 
 The period is \(2\pi/\Delta\omega\). The requested time span must be shorter
 than this period.
+
+For a non-separable spatio-spectral phase, additionally verify:
+
+- the phase and group-delay maps on the input pupil;
+- individual frequency-component centroids and focal positions;
+- every vector component at several longitudinal planes;
+- convergence of the STC effect itself, not only total peak intensity;
+- recovery of the uncoupled result when all chromatic coefficients vanish.
 
 ### Observation grid
 
@@ -257,6 +267,11 @@ between adjacent samples. A jump close to \(2\pi\) usually indicates a wrapped
 branch cut that EPOCH will interpolate incorrectly. Genuine optical
 singularities require a grid and branch-cut treatment appropriate to the
 physical field; phase at exactly zero amplitude is undefined.
+
+`epoch_phase_diagnostics()` automates a first check. A nonzero winding-cell
+count means that a reliable two-dimensional cell contains phase circulation
+and no global scalar unwrapping exists. This is particularly relevant to the
+space-time vortices that can arise from tightly focused chromatic coupling.
 
 For a production injection:
 

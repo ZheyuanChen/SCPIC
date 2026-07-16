@@ -391,3 +391,51 @@ successful byte-code compilation, and a clean formatting and whitespace
 audit. The full six-case Vallières benchmark was also rerun: focal widths and
 Rayleigh lengths remain within 2.6% of the paper, linear peak intensities
 within 4.2%, and TM01 peak intensities within 8.4%.
+
+---
+
+## Phase 13: Non-separable Space-Time Couplings (July 2026)
+
+Jolly *et al.*, *Space-time couplings in ultrashort lasers with arbitrary
+nonparaxial focusing* (2025), was reviewed against the SCPIC implementation.
+Its integral branch uses the same frequency-by-frequency physical-optics
+Stratton--Chu strategy as SCPIC, but applies Zernike coefficients that vary
+with frequency. This permits an incident field whose spatial and spectral
+dependence is not separable.
+
+The incident-field API was extended with
+`spatio_spectral_phase(points, angular_frequency)`, returning phase in radians.
+It is available on all five 3D incident-field families. The existing
+`wavefront_opd(points)` input remains separate and continues to return metres
+of physical path, contributing `k*OPD` at each frequency. This distinction
+prevents fixed metrology and arbitrary chromatic phase from being conflated.
+
+`ChromaticZernikePhase` now supplies general OSA/ANSI expansions with scalar or
+frequency-callable coefficients. Three constructors reproduce the incident
+phases in Jolly's equations (44)--(46):
+
+* input angular dispersion / pulse-front tilt;
+* chromatic curvature / longitudinal chromatism;
+* chromatic trefoil.
+
+The broadband propagator requires no new numerical kernel. It already
+evaluates incident fields independently at every spectral component, so the
+new phase is applied on mirror and contour quadrature points before the
+existing Stratton--Chu integration and time reconstruction.
+
+Space-time vortices in the paper revealed an EPOCH representation risk that is
+different from an ordinary wrapped branch cut. A true phase singularity has
+nonzero circulation and cannot be made globally continuous.
+`epoch_phase_diagnostics()` was added to report low-amplitude coverage,
+maximum reliable adjacent phase step, and phase-winding cells on every
+two-dimensional slice of a 1D, 2D, or 3D profile.
+
+Eleven regressions were added for the exact Jolly group-delay scalings,
+trefoil symmetry, all incident-field classes, broadband frequency evaluation,
+input validation, vortex detection, and the opposite focal centroids produced
+by low- and high-frequency components after Stratton--Chu propagation. The
+complete local suite now passes with 54 tests.
+
+The original paraxial benchmark still agrees with its analytical waist to
+0.03%, and the complete six-case Vallières suite is numerically unchanged
+after the shared Zernike and incident-phase refactor.

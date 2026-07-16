@@ -59,6 +59,12 @@ Common keyword arguments:
 - `amplitude`: complex spectral coefficient;
 - `spectral_phase`: additional phase in radians.
 
+Common construction options:
+
+- `wavefront_opd(points)`: fixed optical path difference in metres;
+- `spatio_spectral_phase(points, angular_frequency)`: position--frequency
+  phase in radians.
+
 ### `LinearPolarisedSuperGaussian3D`
 
 Collimated super-Gaussian with arbitrary propagation and transverse linear
@@ -119,6 +125,35 @@ ZernikeWavefront(
 ```
 
 Coefficients use OSA/ANSI `(n, m)` indexing and metres of OPD.
+
+### `ChromaticZernikePhase`
+
+Callable position--frequency phase in radians:
+
+```python
+ChromaticZernikePhase(
+    pupil_radius,
+    coefficients,
+    carrier_angular_frequency=omega_c,
+    centre=(0, 0, 0),
+    axis_u=(1, 0, 0),
+    axis_v=(0, 1, 0),
+    outside="raise",
+)
+```
+
+`coefficients` maps an OSA/ANSI `(n, m)` mode to either a finite constant in
+radians or a callable of angular frequency returning radians.
+
+Paper-specific constructors:
+
+- `jolly_angular_dispersion(...)`
+- `jolly_chromatic_curvature(...)`
+- `jolly_chromatic_trefoil(...)`
+
+All three-dimensional incident fields accept
+`spatio_spectral_phase(points, angular_frequency)` in addition to
+`wavefront_opd(points)`.
 
 ## Solvers
 
@@ -295,6 +330,19 @@ Returns `(amplitude, phase, field_scale)` without writing files.
 
 Phase is unwrapped sequentially along every array axis by default so EPOCH's
 linear interpolation does not cross artificial \(2\pi\) branch cuts.
+
+### `epoch_phase_diagnostics(field, amplitude_floor=1e-6)`
+
+Returns `EpochPhaseDiagnostics`:
+
+- `low_amplitude_fraction`
+- `maximum_reliable_phase_step`
+- `winding_cell_count`
+- `has_phase_singularity`
+
+Phase steps and winding cells touching samples below the relative amplitude
+floor are excluded. A nonzero winding count indicates a topological phase
+singularity that ordinary unwrapping cannot remove.
 
 ### `export_epoch_profile(directory, field, **options)`
 

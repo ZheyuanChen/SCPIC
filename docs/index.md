@@ -13,6 +13,7 @@ the separate two-dimensional solver is a TM reduction intended for EPOCH2D.
 | Decide whether a result is sufficiently converged | [Validation and acceptance](validation.md) |
 | Look up classes, functions, array shapes, and return values | [API reference](api_reference.md) |
 | Understand the implemented equations and paper benchmarks | [Three-dimensional methodology](methodology_3d.md) |
+| Model chromatic aberrations and pulse-front couplings | [Space-time couplings](space_time_couplings.md) |
 | Run the local modified-EPOCH test cases | [EPOCH validation guide](../epoch_tests/README.md) |
 | Review related implementations and literature | [Literature review](literature_review.md) |
 | See intentionally deferred development | [Roadmap](roadmap.md) |
@@ -59,6 +60,7 @@ The present evidence includes:
 - independent surface and spectral convergence studies;
 - frequency-domain and time-domain Maxwell residual tests;
 - energy-normalisation, energy-density, and Poynting-flux tests;
+- non-separable chromatic Zernike phase and Jolly STC regressions;
 - direct comparison with the local EPOCH-mod file reader;
 - three EPOCH2D and three EPOCH3D workstation-scale propagation cases.
 

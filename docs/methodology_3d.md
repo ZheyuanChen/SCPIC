@@ -176,6 +176,35 @@ spectral phase \(\phi(\omega)\); the component coefficients are
 \(E_{0n}\exp[i\phi(\omega_n)]\). The discrete period and optical-carrier
 Nyquist step are exposed so a requested time grid can be checked for aliasing.
 
+### Non-separable spatio-spectral phase
+
+Following the integral formulation used by Jolly *et al.* (2025), an incident
+component may additionally carry
+
+\[
+\mathbf E_{\mathrm{inc}}(\mathbf r,\omega)
+=\mathbf E_{\mathrm{base}}(\mathbf r,\omega)
+\exp[i\phi_{\mathrm{STC}}(\mathbf r,\omega)].
+\]
+
+Here adjacency denotes multiplication of the base vector field by the
+exponential phase factor. `spatio_spectral_phase(points, omega)` returns
+\(\phi_{\mathrm{STC}}\) directly in radians. This is separate from
+`wavefront_opd(points)`, which contributes \(k\,\mathrm{OPD}\).
+
+`ChromaticZernikePhase` represents
+
+\[
+\phi_{\mathrm{STC}}(\rho,\theta,\omega)
+=\sum_{n,m} C_n^m(\omega) Z_n^m(\rho,\theta)
+\]
+
+with orthonormal OSA/ANSI modes. Its Jolly constructors implement chromatic
+tilt, defocus and trefoil from equations (44)--(46) of that paper. The full
+Stratton--Chu calculation then produces the frequency-dependent focus,
+finite-aperture aberration and vector-component mixing without applying a
+paraxial focal-plane scaling.
+
 ## Numerical backends and field diagnostics
 
 NumPy direct quadrature is the reference implementation. Passing

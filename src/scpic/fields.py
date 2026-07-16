@@ -6,6 +6,90 @@ from scipy.special import eval_laguerre, gamma
 C = 299_792_458.0
 
 
+def _validate_zernike_mode(mode):
+    if not isinstance(mode, tuple) or len(mode) != 2:
+        raise ValueError("Zernike modes must be (n, m) tuples")
+    n, m = mode
+    if (
+        not isinstance(n, (int, np.integer))
+        or not isinstance(m, (int, np.integer))
+        or n < 0
+        or abs(m) > n
+        or (n - abs(m)) % 2
+    ):
+        raise ValueError(f"invalid Zernike mode {(n, m)}")
+    return int(n), int(m)
+
+
+def _zernike_radial_polynomial(n, m, radius):
+    radial = np.zeros_like(radius)
+    for index in range((n - m) // 2 + 1):
+        coefficient = (
+            (-1) ** index
+            * factorial(n - index)
+            / (
+                factorial(index)
+                * factorial((n + m) // 2 - index)
+                * factorial((n - m) // 2 - index)
+            )
+        )
+        radial += coefficient * radius ** (n - 2 * index)
+    return radial
+
+
+def _zernike_mode(n, m, radius, theta):
+    absolute_m = abs(m)
+    radial = _zernike_radial_polynomial(n, absolute_m, radius)
+    normalisation = np.sqrt(n + 1) if m == 0 else np.sqrt(2 * (n + 1))
+    if m > 0:
+        angular = np.cos(absolute_m * theta)
+    elif m < 0:
+        angular = np.sin(absolute_m * theta)
+    else:
+        angular = 1.0
+    return normalisation * radial * angular
+
+
+def _pupil_coordinates(points, centre, axis_u, axis_v, pupil_radius, outside):
+    points = np.asarray(points, dtype=float)
+    if points.ndim != 2 or points.shape[1] != 3:
+        raise ValueError("points must have shape (n, 3)")
+    relative = points - centre
+    u = relative @ axis_u / pupil_radius
+    v = relative @ axis_v / pupil_radius
+    radius = np.hypot(u, v)
+    outside_mask = radius > 1.0 + 1e-12
+    if outside == "raise" and np.any(outside_mask):
+        raise ValueError("wavefront points lie outside the Zernike pupil")
+    return radius, np.arctan2(v, u), outside_mask
+
+
+def _validated_pupil_geometry(
+    pupil_radius,
+    centre,
+    axis_u,
+    axis_v,
+    outside,
+):
+    if pupil_radius <= 0:
+        raise ValueError("pupil_radius must be positive")
+    if outside not in {"raise", "zero", "extrapolate"}:
+        raise ValueError("outside must be 'raise', 'zero', or 'extrapolate'")
+
+    centre = np.asarray(centre, dtype=float)
+    axis_u = np.asarray(axis_u, dtype=float)
+    axis_v = np.asarray(axis_v, dtype=float)
+    if centre.shape != (3,) or axis_u.shape != (3,) or axis_v.shape != (3,):
+        raise ValueError("centre, axis_u, and axis_v must be 3-vectors")
+    if np.linalg.norm(axis_u) == 0 or np.linalg.norm(axis_v) == 0:
+        raise ValueError("pupil axes must be non-zero")
+    axis_u = axis_u / np.linalg.norm(axis_u)
+    axis_v = axis_v / np.linalg.norm(axis_v)
+    if not np.isclose(np.dot(axis_u, axis_v), 0.0, atol=1e-12):
+        raise ValueError("pupil axes must be perpendicular")
+    return float(pupil_radius), centre, axis_u, axis_v, outside
+
+
 class IncidentFieldTM:
     """Monochromatic Gaussian beam incident along ``-z``.
 
@@ -58,42 +142,23 @@ class ZernikeWavefront:
         axis_v=(0.0, 1.0, 0.0),
         outside="raise",
     ):
-        if pupil_radius <= 0:
-            raise ValueError("pupil_radius must be positive")
-        if outside not in {"raise", "zero", "extrapolate"}:
-            raise ValueError("outside must be 'raise', 'zero', or 'extrapolate'")
-
-        centre = np.asarray(centre, dtype=float)
-        axis_u = np.asarray(axis_u, dtype=float)
-        axis_v = np.asarray(axis_v, dtype=float)
-        if centre.shape != (3,) or axis_u.shape != (3,) or axis_v.shape != (3,):
-            raise ValueError("centre, axis_u, and axis_v must be 3-vectors")
-        if np.linalg.norm(axis_u) == 0 or np.linalg.norm(axis_v) == 0:
-            raise ValueError("pupil axes must be non-zero")
-        axis_u = axis_u / np.linalg.norm(axis_u)
-        axis_v = axis_v / np.linalg.norm(axis_v)
-        if not np.isclose(np.dot(axis_u, axis_v), 0.0, atol=1e-12):
-            raise ValueError("pupil axes must be perpendicular")
+        pupil_radius, centre, axis_u, axis_v, outside = _validated_pupil_geometry(
+            pupil_radius,
+            centre,
+            axis_u,
+            axis_v,
+            outside,
+        )
 
         validated = {}
         for mode, coefficient in dict(coefficients).items():
-            if not isinstance(mode, tuple) or len(mode) != 2:
-                raise ValueError("Zernike modes must be (n, m) tuples")
-            n, m = mode
-            if (
-                not isinstance(n, (int, np.integer))
-                or not isinstance(m, (int, np.integer))
-                or n < 0
-                or abs(m) > n
-                or (n - abs(m)) % 2
-            ):
-                raise ValueError(f"invalid Zernike mode {(n, m)}")
+            n, m = _validate_zernike_mode(mode)
             coefficient = float(coefficient)
             if not np.isfinite(coefficient):
                 raise ValueError("Zernike coefficients must be finite")
-            validated[(int(n), int(m))] = coefficient
+            validated[(n, m)] = coefficient
 
-        self.pupil_radius = float(pupil_radius)
+        self.pupil_radius = pupil_radius
         self.coefficients = validated
         self.centre = centre
         self.axis_u = axis_u
@@ -102,51 +167,197 @@ class ZernikeWavefront:
 
     @staticmethod
     def _radial_polynomial(n, m, radius):
-        radial = np.zeros_like(radius)
-        for index in range((n - m) // 2 + 1):
-            coefficient = (
-                (-1) ** index
-                * factorial(n - index)
-                / (
-                    factorial(index)
-                    * factorial((n + m) // 2 - index)
-                    * factorial((n - m) // 2 - index)
-                )
-            )
-            radial += coefficient * radius ** (n - 2 * index)
-        return radial
+        return _zernike_radial_polynomial(n, m, radius)
 
     def opd(self, points):
         """Return optical path difference in metres at three-dimensional points."""
-        points = np.asarray(points, dtype=float)
-        if points.ndim != 2 or points.shape[1] != 3:
-            raise ValueError("points must have shape (n, 3)")
-        relative = points - self.centre
-        u = relative @ self.axis_u / self.pupil_radius
-        v = relative @ self.axis_v / self.pupil_radius
-        radius = np.hypot(u, v)
-        outside = radius > 1.0 + 1e-12
-        if self.outside == "raise" and np.any(outside):
-            raise ValueError("wavefront points lie outside the Zernike pupil")
-
-        theta = np.arctan2(v, u)
+        radius, theta, outside = _pupil_coordinates(
+            points,
+            self.centre,
+            self.axis_u,
+            self.axis_v,
+            self.pupil_radius,
+            self.outside,
+        )
         result = np.zeros(len(points), dtype=float)
         for (n, m), coefficient in self.coefficients.items():
-            absolute_m = abs(m)
-            radial = self._radial_polynomial(n, absolute_m, radius)
-            normalisation = np.sqrt(n + 1) if m == 0 else np.sqrt(2 * (n + 1))
-            if m > 0:
-                angular = np.cos(absolute_m * theta)
-            elif m < 0:
-                angular = np.sin(absolute_m * theta)
-            else:
-                angular = 1.0
-            result += coefficient * normalisation * radial * angular
+            result += coefficient * _zernike_mode(n, m, radius, theta)
         if self.outside == "zero":
             result[outside] = 0.0
         return result
 
     __call__ = opd
+
+
+class ChromaticZernikePhase:
+    """Position--frequency phase expanded in OSA/ANSI Zernike modes.
+
+    ``coefficients`` maps ``(n, m)`` modes to either a finite phase in radians
+    or a callable ``coefficient(angular_frequency)`` returning radians.  This
+    represents a genuinely non-separable spatio-spectral phase and is distinct
+    from :class:`ZernikeWavefront`, whose coefficients are fixed optical path
+    differences in metres.
+    """
+
+    def __init__(
+        self,
+        pupil_radius,
+        coefficients,
+        *,
+        carrier_angular_frequency,
+        centre=(0.0, 0.0, 0.0),
+        axis_u=(1.0, 0.0, 0.0),
+        axis_v=(0.0, 1.0, 0.0),
+        outside="raise",
+    ):
+        carrier = float(carrier_angular_frequency)
+        if not np.isfinite(carrier) or carrier <= 0:
+            raise ValueError("carrier_angular_frequency must be positive and finite")
+        pupil_radius, centre, axis_u, axis_v, outside = _validated_pupil_geometry(
+            pupil_radius,
+            centre,
+            axis_u,
+            axis_v,
+            outside,
+        )
+        validated = {}
+        for mode, coefficient in dict(coefficients).items():
+            mode = _validate_zernike_mode(mode)
+            if callable(coefficient):
+                validated[mode] = coefficient
+            else:
+                coefficient = float(coefficient)
+                if not np.isfinite(coefficient):
+                    raise ValueError("chromatic Zernike coefficients must be finite")
+                validated[mode] = coefficient
+
+        self.pupil_radius = pupil_radius
+        self.coefficients = validated
+        self.carrier_angular_frequency = carrier
+        self.centre = centre
+        self.axis_u = axis_u
+        self.axis_v = axis_v
+        self.outside = outside
+
+    @classmethod
+    def jolly_angular_dispersion(
+        cls,
+        pupil_radius,
+        pulse_front_tilt,
+        *,
+        carrier_angular_frequency,
+        azimuthal_index=1,
+        **kwargs,
+    ):
+        """Construct Eq. (44) of Jolly et al. (2025).
+
+        ``pulse_front_tilt`` is the group delay in seconds at one pupil radius.
+        ``azimuthal_index=1`` uses the cosine x-tilt mode and ``-1`` uses the
+        sine y-tilt mode.
+        """
+        if azimuthal_index not in {-1, 1}:
+            raise ValueError("azimuthal_index must be -1 or 1")
+        delay = float(pulse_front_tilt)
+        if not np.isfinite(delay):
+            raise ValueError("pulse_front_tilt must be finite")
+        carrier = float(carrier_angular_frequency)
+
+        def coefficient(omega):
+            return delay * omega * (omega - carrier) / (2 * carrier)
+
+        return cls(
+            pupil_radius,
+            {(1, azimuthal_index): coefficient},
+            carrier_angular_frequency=carrier,
+            **kwargs,
+        )
+
+    @classmethod
+    def jolly_chromatic_curvature(
+        cls,
+        pupil_radius,
+        pulse_front_curvature,
+        *,
+        carrier_angular_frequency,
+        include_piston=True,
+        **kwargs,
+    ):
+        """Construct the chromatic defocus phase in Eq. (45)."""
+        delay = float(pulse_front_curvature)
+        if not np.isfinite(delay):
+            raise ValueError("pulse_front_curvature must be finite")
+        if not isinstance(include_piston, (bool, np.bool_)):
+            raise TypeError("include_piston must be boolean")
+        carrier = float(carrier_angular_frequency)
+
+        def common(omega):
+            return delay * omega * (omega - carrier) / (2 * carrier)
+
+        coefficients = {(2, 0): lambda omega: common(omega) / np.sqrt(3)}
+        if include_piston:
+            coefficients[(0, 0)] = common
+        return cls(
+            pupil_radius,
+            coefficients,
+            carrier_angular_frequency=carrier,
+            **kwargs,
+        )
+
+    @classmethod
+    def jolly_chromatic_trefoil(
+        cls,
+        pupil_radius,
+        characteristic_delay,
+        *,
+        carrier_angular_frequency,
+        azimuthal_index=3,
+        **kwargs,
+    ):
+        """Construct the chromatic trefoil phase in Eq. (46)."""
+        if azimuthal_index not in {-3, 3}:
+            raise ValueError("azimuthal_index must be -3 or 3")
+        delay = float(characteristic_delay)
+        if not np.isfinite(delay):
+            raise ValueError("characteristic_delay must be finite")
+        carrier = float(carrier_angular_frequency)
+
+        def coefficient(omega):
+            return delay * omega * (omega - carrier) / (2 * carrier * np.sqrt(8))
+
+        return cls(
+            pupil_radius,
+            {(3, azimuthal_index): coefficient},
+            carrier_angular_frequency=carrier,
+            **kwargs,
+        )
+
+    def phase(self, points, angular_frequency):
+        """Return the spatio-spectral phase in radians."""
+        omega = float(angular_frequency)
+        if not np.isfinite(omega) or omega <= 0:
+            raise ValueError("angular_frequency must be positive and finite")
+        radius, theta, outside = _pupil_coordinates(
+            points,
+            self.centre,
+            self.axis_u,
+            self.axis_v,
+            self.pupil_radius,
+            self.outside,
+        )
+        result = np.zeros(len(points), dtype=float)
+        for (n, m), coefficient in self.coefficients.items():
+            value = coefficient(omega) if callable(coefficient) else coefficient
+            value = float(value)
+            if not np.isfinite(value):
+                raise ValueError(
+                    f"chromatic Zernike coefficient {(n, m)} is not finite"
+                )
+            result += value * _zernike_mode(n, m, radius, theta)
+        if self.outside == "zero":
+            result[outside] = 0.0
+        return result
+
+    __call__ = phase
 
 
 class _SuperGaussian3D:
@@ -161,6 +372,7 @@ class _SuperGaussian3D:
         direction=(0.0, 0.0, -1.0),
         centre=(0.0, 0.0, 0.0),
         wavefront_opd=None,
+        spatio_spectral_phase=None,
     ):
         if w0 <= 0:
             raise ValueError("w0 must be positive")
@@ -177,6 +389,8 @@ class _SuperGaussian3D:
             raise ValueError("direction must be non-zero")
         if wavefront_opd is not None and not callable(wavefront_opd):
             raise TypeError("wavefront_opd must be callable")
+        if spatio_spectral_phase is not None and not callable(spatio_spectral_phase):
+            raise TypeError("spatio_spectral_phase must be callable")
 
         self.w0 = float(w0)
         self.wavelength = wavelength
@@ -186,6 +400,7 @@ class _SuperGaussian3D:
         self.direction = direction / np.linalg.norm(direction)
         self.centre = centre
         self.wavefront_opd = wavefront_opd
+        self.spatio_spectral_phase = spatio_spectral_phase
 
     @classmethod
     def from_intensity_fwhm(cls, intensity_fwhm, **kwargs):
@@ -205,12 +420,34 @@ class _SuperGaussian3D:
     def _polarisation_vectors(self, transverse, radius):
         raise NotImplementedError
 
+    def _phase_correction(self, points, k):
+        correction = np.zeros(len(points), dtype=float)
+        if self.wavefront_opd is not None:
+            opd = np.asarray(self.wavefront_opd(points), dtype=float)
+            if opd.shape != (len(points),) or not np.all(np.isfinite(opd)):
+                raise ValueError("wavefront_opd must return one finite value per point")
+            correction += k * opd
+        if self.spatio_spectral_phase is not None:
+            phase = np.asarray(
+                self.spatio_spectral_phase(points, k * C),
+                dtype=float,
+            )
+            if phase.shape != (len(points),) or not np.all(np.isfinite(phase)):
+                raise ValueError(
+                    "spatio_spectral_phase must return one finite value per point"
+                )
+            correction += phase
+        return correction
+
     def fields(self, points, *, k=None, amplitude=None, spectral_phase=0.0):
         """Evaluate incident electric and magnetic phasors at ``points``.
 
         ``wavefront_opd(points)`` is interpreted in metres and contributes
         ``+k * OPD`` to the phasor phase.  This keeps a measured wavefront
         frequency-aware during broadband propagation.
+        ``spatio_spectral_phase(points, k*c)`` instead contributes phase
+        directly in radians and may vary arbitrarily with position and
+        frequency.
         """
         points = np.asarray(points, dtype=float)
         if points.ndim != 2 or points.shape[1] != 3:
@@ -227,12 +464,9 @@ class _SuperGaussian3D:
         transverse = relative - longitudinal[:, None] * self.direction
         radius = np.linalg.norm(transverse, axis=1)
         envelope = np.exp(-((radius / self.w0) ** self.spatial_order))
-        phase_argument = k * longitudinal + spectral_phase
-        if self.wavefront_opd is not None:
-            opd = np.asarray(self.wavefront_opd(points), dtype=float)
-            if opd.shape != (len(points),) or not np.all(np.isfinite(opd)):
-                raise ValueError("wavefront_opd must return one finite value per point")
-            phase_argument = phase_argument + k * opd
+        phase_argument = (
+            k * longitudinal + spectral_phase + self._phase_correction(points, k)
+        )
         scalar = amplitude * envelope * np.exp(1j * phase_argument)
         electric = scalar[:, None] * self._polarisation_vectors(transverse, radius)
         magnetic = np.cross(self.direction, electric) / C
@@ -257,6 +491,7 @@ class LinearPolarisedSuperGaussian3D(_SuperGaussian3D):
         polarisation=(1.0, 0.0, 0.0),
         centre=(0.0, 0.0, 0.0),
         wavefront_opd=None,
+        spatio_spectral_phase=None,
     ):
         polarisation = np.asarray(polarisation, dtype=float)
         if polarisation.shape != (3,):
@@ -272,6 +507,7 @@ class LinearPolarisedSuperGaussian3D(_SuperGaussian3D):
             direction=direction,
             centre=centre,
             wavefront_opd=wavefront_opd,
+            spatio_spectral_phase=spatio_spectral_phase,
         )
         if not np.isclose(np.dot(self.direction, polarisation), 0.0, atol=1e-12):
             raise ValueError("polarisation must be perpendicular to direction")
@@ -318,6 +554,7 @@ class TM01RadiallyPolarisedBeam3D(_SuperGaussian3D):
         direction=(0.0, 0.0, -1.0),
         centre=(0.0, 0.0, 0.0),
         wavefront_opd=None,
+        spatio_spectral_phase=None,
     ):
         super().__init__(
             w0=w0,
@@ -327,6 +564,7 @@ class TM01RadiallyPolarisedBeam3D(_SuperGaussian3D):
             direction=direction,
             centre=centre,
             wavefront_opd=wavefront_opd,
+            spatio_spectral_phase=spatio_spectral_phase,
         )
 
     def effective_area(self, k=None):
@@ -361,12 +599,9 @@ class TM01RadiallyPolarisedBeam3D(_SuperGaussian3D):
         longitudinal = relative @ self.direction
         transverse = relative - longitudinal[:, None] * self.direction
         radius_squared = np.sum(transverse**2, axis=1)
-        phase_argument = k * longitudinal + spectral_phase
-        if self.wavefront_opd is not None:
-            opd = np.asarray(self.wavefront_opd(points), dtype=float)
-            if opd.shape != (len(points),) or not np.all(np.isfinite(opd)):
-                raise ValueError("wavefront_opd must return one finite value per point")
-            phase_argument = phase_argument + k * opd
+        phase_argument = (
+            k * longitudinal + spectral_phase + self._phase_correction(points, k)
+        )
 
         scalar = (
             2
@@ -409,12 +644,9 @@ class FiniteRayleighTM01Beam3D(TM01RadiallyPolarisedBeam3D):
         radius_squared = np.sum(transverse**2, axis=1)
         rayleigh_range = k * self.w0**2 / 2
         q = 1 / (1 - 1j * longitudinal / rayleigh_range)
-        phase_argument = k * longitudinal + spectral_phase
-        if self.wavefront_opd is not None:
-            opd = np.asarray(self.wavefront_opd(points), dtype=float)
-            if opd.shape != (len(points),) or not np.all(np.isfinite(opd)):
-                raise ValueError("wavefront_opd must return one finite value per point")
-            phase_argument = phase_argument + k * opd
+        phase_argument = (
+            k * longitudinal + spectral_phase + self._phase_correction(points, k)
+        )
 
         common = amplitude * np.exp(
             -q * radius_squared / self.w0**2 + 1j * phase_argument
@@ -452,6 +684,7 @@ class ParaxialGaussLaguerreBeam3D:
         polarisation=(1.0, 0.0, 0.0),
         centre=(0.0, 0.0, 0.0),
         wavefront_opd=None,
+        spatio_spectral_phase=None,
     ):
         if w0 <= 0:
             raise ValueError("w0 must be positive")
@@ -474,6 +707,8 @@ class ParaxialGaussLaguerreBeam3D:
             raise ValueError("polarisation must be perpendicular to direction")
         if wavefront_opd is not None and not callable(wavefront_opd):
             raise TypeError("wavefront_opd must be callable")
+        if spatio_spectral_phase is not None and not callable(spatio_spectral_phase):
+            raise TypeError("spatio_spectral_phase must be callable")
 
         if isinstance(mode_coefficients, dict):
             items = mode_coefficients.items()
@@ -502,6 +737,7 @@ class ParaxialGaussLaguerreBeam3D:
         self.centre = centre
         self.mode_coefficients = modes
         self.wavefront_opd = wavefront_opd
+        self.spatio_spectral_phase = spatio_spectral_phase
 
     @property
     def effective_area(self):
@@ -546,6 +782,16 @@ class ParaxialGaussLaguerreBeam3D:
             if opd.shape != (len(points),) or not np.all(np.isfinite(opd)):
                 raise ValueError("wavefront_opd must return one finite value per point")
             phase_argument = phase_argument + k * opd
+        if self.spatio_spectral_phase is not None:
+            phase = np.asarray(
+                self.spatio_spectral_phase(points, k * C),
+                dtype=float,
+            )
+            if phase.shape != (len(points),) or not np.all(np.isfinite(phase)):
+                raise ValueError(
+                    "spatio_spectral_phase must return one finite value per point"
+                )
+            phase_argument = phase_argument + phase
         scalar = (
             amplitude
             * self.w0

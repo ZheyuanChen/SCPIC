@@ -1,6 +1,6 @@
 # Literature and existing software
 
-Review date: 15 July 2026.
+Review date: 16 July 2026.
 
 ## Direct implementations
 
@@ -22,6 +22,41 @@ but not currently a reusable public dependency.
 - Vallières *et al.*, *Optics Express* 31, 19319 (2023),
   <https://doi.org/10.1364/OE.486230>
 - Jolly *et al.*, *Nanophotonics* (2025),
+  <https://doi.org/10.1515/nanoph-2024-0616>
+
+### Jolly space-time-coupling extension (2025)
+
+Jolly *et al.* use both a complex-source analytical model and
+StrattoCalculator to study ultrashort TM01 pulses with nonparaxial
+space-time couplings. Their integral route is directly aligned with SCPIC:
+each frequency receives an incident vector field and a frequency-dependent
+spatial phase, is propagated by Stratton--Chu, and is coherently reconstructed
+in time.
+
+Their central software insight is the expansion
+
+\[
+S(\rho,\theta,\omega)
+=\sum_{n,m} C_n^m(\omega)Z_n^m(\rho,\theta),
+\]
+
+which represents chromatic tilt, defocus, trefoil, and arbitrary combinations.
+The paper shows that paraxial focal-shift rules miss finite-aperture
+distortions, frequency-dependent beam-size effects, and mixing between
+longitudinal and transverse components.
+
+SCPIC now provides `ChromaticZernikePhase`, exact convenience constructors for
+the paper's equations (44)--(46), and a general
+`spatio_spectral_phase(points, omega)` input on every 3D incident-field class.
+It retains fixed OPD as a separate API because metres of physical path and
+radians of arbitrary chromatic phase have different meanings.
+
+The paper also demonstrates space-time vortices. These expose a limitation of
+EPOCH's amplitude/phase reader: no global scalar unwrapping exists around a
+phase singularity. SCPIC therefore provides `epoch_phase_diagnostics()` to
+identify reliable phase-winding cells before export.
+
+- Jolly *et al.*, *Nanophotonics* 14, 815--832 (2025),
   <https://doi.org/10.1515/nanoph-2024-0616>
 
 ### Fourmaux transmission-parabola experiment (2025)

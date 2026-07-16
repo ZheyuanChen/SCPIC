@@ -129,6 +129,38 @@ spectrum = SuperGaussianSpectrum.from_wavelength_bandwidth(
 data, applies `|dlambda/domega|`, and resamples it onto the uniform angular-
 frequency grid required by the discrete Fourier representation.
 
+## Non-separable space-time couplings
+
+Every 3D incident-field class accepts
+`spatio_spectral_phase(points, angular_frequency)`, allowing the input phase
+to depend jointly on pupil position and frequency. `ChromaticZernikePhase`
+provides general OSA/ANSI frequency-dependent Zernike coefficients and
+constructors for the chromatic tilt, curvature, and trefoil phases in Jolly
+*et al.* (2025):
+
+```python
+import numpy as np
+
+from scpic import ChromaticZernikePhase, TM01RadiallyPolarisedBeam3D
+
+omega0 = 2 * np.pi * 299_792_458.0 / 800e-9
+stc = ChromaticZernikePhase.jolly_angular_dispersion(
+    pupil_radius=50e-3,
+    pulse_front_tilt=4.25e-15,
+    carrier_angular_frequency=omega0,
+    centre=(*mirror.aperture_centre, 0.0),
+)
+
+incident = TM01RadiallyPolarisedBeam3D(
+    w0=50e-3,
+    spatio_spectral_phase=stc,
+)
+```
+
+This phase-in-radians interface is separate from `wavefront_opd(points)`,
+which remains a fixed physical path map in metres. See
+[`docs/space_time_couplings.md`](docs/space_time_couplings.md).
+
 `FiniteRayleighTM01Beam3D` implements Dumont's complex-q radial Gaussian,
 including curvature and the longitudinal electric field. It reduces exactly
 to `TM01RadiallyPolarisedBeam3D` at its waist. The complementary
@@ -224,6 +256,7 @@ the tested reference implementation.
 | [`docs/validation.md`](docs/validation.md) | Convergence, Maxwell, energy, paper, and EPOCH acceptance |
 | [`docs/api_reference.md`](docs/api_reference.md) | Public classes, functions, shapes, and return values |
 | [`docs/methodology_3d.md`](docs/methodology_3d.md) | Equations and benchmark evidence |
+| [`docs/space_time_couplings.md`](docs/space_time_couplings.md) | Chromatic Zernike phase and Jolly et al. STCs |
 | [`epoch_tests/README.md`](epoch_tests/README.md) | Local EPOCH2D and EPOCH3D integration tests |
 | [`docs/literature_review.md`](docs/literature_review.md) | Related papers and implementations |
 | [`docs/roadmap.md`](docs/roadmap.md) | Worthwhile but intentionally deferred features |
@@ -231,9 +264,9 @@ the tested reference implementation.
 The most important remaining scientific development is a full-vector interior
 current-sheet injector inside EPOCH. It is not a missing optical-solver feature:
 it is needed because `simple_laser` cannot directly impose the longitudinal
-electric field of a near-unity-NA focus. Measured-instrument adapters and
-CUDA/MPI production validation are also worthwhile, but depend on representative
-data formats or suitable hardware.
+electric field of a near-unity-NA focus. Measured amplitude adapters,
+frequency-dependent beam geometry, and CUDA/MPI production validation are also
+worthwhile, but depend on representative data formats or suitable hardware.
 
 ## EPOCH mapping
 
@@ -256,6 +289,9 @@ Static files contain a monochromatic complex phasor. Spatiotemporal files must
 contain a complex envelope relative to the `lambda`/carrier specified in the
 EPOCH deck. If the temporal envelope is already present in the file, omit
 `t_profile`; otherwise EPOCH multiplies the two envelopes.
+
+For strongly coupled fields, `epoch_phase_diagnostics()` detects resolved
+phase-winding cells that cannot be removed by ordinary scalar unwrapping.
 
 Three EPOCH2D and three EPOCH3D workstation-sized cases cover array ordering,
 sign-sensitive phase gradients and complete SCPIC focus paths. See

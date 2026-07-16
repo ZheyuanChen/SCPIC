@@ -21,8 +21,14 @@ from .diagnostics import (
     relative_energy_error,
     time_domain_maxwell_residuals,
 )
-from .export import epoch_amplitude_phase, export_epoch_profile
+from .export import (
+    EpochPhaseDiagnostics,
+    epoch_amplitude_phase,
+    epoch_phase_diagnostics,
+    export_epoch_profile,
+)
 from .fields import (
+    ChromaticZernikePhase,
     IncidentFieldTM,
     FiniteRayleighTM01Beam3D,
     LinearPolarisedSuperGaussian3D,
@@ -49,12 +55,14 @@ from .solvers import evaluate_SC_2D, evaluate_SC_3D
 
 __all__ = [
     "IncidentFieldTM",
+    "ChromaticZernikePhase",
     "FiniteRayleighTM01Beam3D",
     "LinearPolarisedSuperGaussian3D",
     "ParaxialGaussLaguerreBeam3D",
     "RadiallyPolarisedSuperGaussian3D",
     "TM01RadiallyPolarisedBeam3D",
     "ZernikeWavefront",
+    "EpochPhaseDiagnostics",
     "MaxwellResiduals",
     "BroadbandFieldChunk",
     "BroadbandPropagationResult",
@@ -79,6 +87,7 @@ __all__ = [
     "surface_quadrature_convergence",
     "time_domain_maxwell_residuals",
     "epoch_amplitude_phase",
+    "epoch_phase_diagnostics",
     "evaluate_SC_2D",
     "evaluate_SC_3D",
     "export_epoch_profile",

@@ -91,9 +91,12 @@ apertures. Possible extensions are:
 - multiple coherent reflectors;
 - frequency-dependent surface response;
 - imported complex near-field data on a non-parabolic surface;
-- spatial chirp, pulse-front tilt, and general position-dependent spectra.
+- frequency-dependent beam centre, width, direction, and polarisation;
+- position-dependent spectral amplitude and filtering.
 
 These broaden the scientific model and should be benchmarked independently.
+Position--frequency phase, including Jolly chromatic tilt, defocus and
+trefoil, is now implemented through `ChromaticZernikePhase`.
 
 ## Lower-priority engineering improvements
 

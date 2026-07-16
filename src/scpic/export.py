@@ -16,6 +16,99 @@ class EpochProfileExport:
     field_scale: float
 
 
+@dataclass(frozen=True)
+class EpochPhaseDiagnostics:
+    """Phase-continuity indicators for an EPOCH amplitude/phase profile."""
+
+    low_amplitude_fraction: float
+    maximum_reliable_phase_step: float
+    winding_cell_count: int
+
+    @property
+    def has_phase_singularity(self):
+        """Whether a reliable two-dimensional cell contains phase winding."""
+        return self.winding_cell_count > 0
+
+
+def _wrapped_phase_difference(difference):
+    return np.angle(np.exp(1j * difference))
+
+
+def epoch_phase_diagnostics(field, *, amplitude_floor=1e-6):
+    """Diagnose branch-cut and phase-singularity risks before EPOCH export.
+
+    ``amplitude_floor`` is relative to the peak field magnitude.  Adjacent
+    phase steps and winding cells touching less reliable samples are excluded,
+    because phase is physically undefined at zero amplitude.  A nonzero
+    ``winding_cell_count`` indicates that no globally continuous scalar phase
+    exists on at least one two-dimensional slice of the stored array.
+    """
+    field = np.asarray(field)
+    if field.ndim not in {1, 2, 3}:
+        raise ValueError("an EPOCH profile must be a 1D, 2D, or 3D array")
+    if field.size == 0 or not np.all(np.isfinite(field)):
+        raise ValueError("field must be non-empty and finite")
+    amplitude_floor = float(amplitude_floor)
+    if not np.isfinite(amplitude_floor) or amplitude_floor < 0 or amplitude_floor >= 1:
+        raise ValueError("amplitude_floor must satisfy 0 <= value < 1")
+
+    magnitude = np.abs(field)
+    peak = float(np.max(magnitude))
+    if peak == 0:
+        raise ValueError("field must contain at least one non-zero value")
+    reliable = magnitude > amplitude_floor * peak
+    phase = np.angle(field)
+    maximum_step = 0.0
+    for axis in range(field.ndim):
+        low = [slice(None)] * field.ndim
+        high = [slice(None)] * field.ndim
+        low[axis] = slice(None, -1)
+        high[axis] = slice(1, None)
+        valid = reliable[tuple(low)] & reliable[tuple(high)]
+        if np.any(valid):
+            differences = _wrapped_phase_difference(
+                phase[tuple(high)] - phase[tuple(low)]
+            )
+            maximum_step = max(maximum_step, float(np.max(np.abs(differences[valid]))))
+
+    winding_cell_count = 0
+    for first_axis in range(field.ndim):
+        for second_axis in range(first_axis + 1, field.ndim):
+            corners = []
+            for first_high, second_high in (
+                (False, False),
+                (True, False),
+                (True, True),
+                (False, True),
+            ):
+                selection = [slice(None)] * field.ndim
+                selection[first_axis] = (
+                    slice(1, None) if first_high else slice(None, -1)
+                )
+                selection[second_axis] = (
+                    slice(1, None) if second_high else slice(None, -1)
+                )
+                corners.append(tuple(selection))
+            valid = np.logical_and.reduce([reliable[corner] for corner in corners])
+            if not np.any(valid):
+                continue
+            circulation = sum(
+                _wrapped_phase_difference(
+                    phase[corners[(index + 1) % 4]] - phase[corners[index]]
+                )
+                for index in range(4)
+            )
+            winding_cell_count += int(
+                np.count_nonzero(valid & (np.abs(circulation) > np.pi))
+            )
+
+    return EpochPhaseDiagnostics(
+        low_amplitude_fraction=float(1.0 - np.mean(reliable)),
+        maximum_reliable_phase_step=maximum_step,
+        winding_cell_count=winding_cell_count,
+    )
+
+
 def epoch_amplitude_phase(
     field,
     *,
@@ -40,7 +133,10 @@ def epoch_amplitude_phase(
     the phase is unwrapped along every array axis by default; a wrapped
     ``[-pi, pi)`` representation would create false interpolation ramps at
     each branch cut.  Set ``unwrap_phase=False`` only when the caller will
-    handle phase continuity separately.
+    handle phase continuity separately.  Use
+    :func:`scpic.epoch_phase_diagnostics` before exporting a field that may
+    contain a physical phase singularity; no scalar unwrapping can remove its
+    topological branch cut.
     """
     field = np.asarray(field)
     if field.ndim not in {1, 2, 3}:
