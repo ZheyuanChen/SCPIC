@@ -106,19 +106,69 @@ class IncidentFieldTM:
         self.c = C
         self.B0 = E0 / C
 
-    def B_y(self, x, z, x_center=0.0):
-        """Return the incident magnetic-field phasor travelling along ``-z``."""
-        envelope = np.exp(-(((x - x_center) / self.w0) ** 2))
-        phase = np.exp(-1j * self.k * z)
-        return self.B0 * envelope * phase
+    def B_y(
+        self,
+        x,
+        z,
+        x_center=0.0,
+        *,
+        k=None,
+        amplitude=1.0,
+        spectral_phase=0.0,
+    ):
+        """Return the incident magnetic-field phasor travelling along ``-z``.
 
-    def dBy_dn(self, x, z, nx, nz, x_center=0.0):
-        """Directional derivative of By along the mirror normal"""
+        ``k`` defaults to the carrier wavenumber supplied at construction.
+        The optional complex ``amplitude`` and phase-in-radians
+        ``spectral_phase`` allow the same transverse input model to be
+        evaluated frequency by frequency during broadband propagation.
+        Existing monochromatic calls are unchanged.
+        """
+        if k is None:
+            k = self.k
+        k = float(k)
+        if not np.isfinite(k) or k <= 0:
+            raise ValueError("k must be positive and finite")
+        amplitude = complex(amplitude)
+        spectral_phase = float(spectral_phase)
+        if not np.isfinite(amplitude.real) or not np.isfinite(amplitude.imag):
+            raise ValueError("amplitude must be finite")
+        if not np.isfinite(spectral_phase):
+            raise ValueError("spectral_phase must be finite")
         envelope = np.exp(-(((x - x_center) / self.w0) ** 2))
-        phase = np.exp(-1j * self.k * z)
+        phase = np.exp(-1j * k * z + 1j * spectral_phase)
+        return amplitude * self.B0 * envelope * phase
 
-        dB_dx = self.B0 * (-2 * (x - x_center) / self.w0**2) * envelope * phase
-        dB_dz = self.B0 * (-1j * self.k) * envelope * phase
+    def dBy_dn(
+        self,
+        x,
+        z,
+        nx,
+        nz,
+        x_center=0.0,
+        *,
+        k=None,
+        amplitude=1.0,
+        spectral_phase=0.0,
+    ):
+        """Directional derivative of ``B_y`` along the mirror normal."""
+        if k is None:
+            k = self.k
+        k = float(k)
+        if not np.isfinite(k) or k <= 0:
+            raise ValueError("k must be positive and finite")
+        amplitude = complex(amplitude)
+        spectral_phase = float(spectral_phase)
+        if not np.isfinite(amplitude.real) or not np.isfinite(amplitude.imag):
+            raise ValueError("amplitude must be finite")
+        if not np.isfinite(spectral_phase):
+            raise ValueError("spectral_phase must be finite")
+        envelope = np.exp(-(((x - x_center) / self.w0) ** 2))
+        phase = np.exp(-1j * k * z + 1j * spectral_phase)
+
+        prefactor = amplitude * self.B0
+        dB_dx = prefactor * (-2 * (x - x_center) / self.w0**2) * envelope * phase
+        dB_dz = prefactor * (-1j * k) * envelope * phase
 
         return dB_dx * nx + dB_dz * nz
 

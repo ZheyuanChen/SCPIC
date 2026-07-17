@@ -51,6 +51,9 @@ The suite covers:
 - chunked reconstruction equivalence;
 - EPOCH phase conversion, precision, shape, and ordering;
 - continuous unwrapped phase for linear interpolation;
+- low-amplitude phase-tail regularisation;
+- focus-defined Gaussian-pulse duration and boundary group delay in 2D;
+- vectorised/chunked and threaded 2D propagation equivalence;
 - monochromatic and time-domain Maxwell equations;
 - electromagnetic energy and Poynting-flux factors;
 - Vallières focal-profile regressions;
@@ -261,6 +264,14 @@ A broadband spatiotemporal production test must additionally confirm that:
 - `t_start`, `t_end`, `n_t`, and transverse axes match the file;
 - an additional `t_profile` is omitted unless intentional;
 - the carrier has not been included in the file phase.
+
+For `generate_epoch2d_oap_pulse()`, also converge mirror points, retained
+spectral count/span and the electric-field derivative step. Confirm that the
+manifest's boundary arrival equals the requested focus time minus the vacuum
+flight time within the temporal sampling error. Compare EPOCH's focal waist
+and longitudinal/transverse ratio with the direct carrier reference stored in
+the manifest; agreement with the boundary file alone does not test
+`simple_laser` reconstruction.
 
 For static and spatiotemporal files, inspect the maximum phase difference
 between adjacent samples. A jump close to \(2\pi\) usually indicates a wrapped

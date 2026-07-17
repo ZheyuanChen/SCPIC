@@ -386,6 +386,140 @@ class SuperGaussianSpectrum(_DiscreteSpectrumMethods):
         )
 
 
+@dataclass(frozen=True)
+class GaussianPulseSpectrum(_DiscreteSpectrumMethods):
+    """Transform-limited Gaussian pulse specified by intensity FWHM.
+
+    The positive-frequency energy density is Gaussian in angular-frequency
+    detuning.  Its square-root component amplitudes reconstruct a field
+    envelope whose intensity FWHM is ``intensity_fwhm``.  ``span_fwhm`` is
+    the retained half-range measured in full spectral FWHM values.
+
+    ``minimum_period`` is especially useful for EPOCH files: when
+    ``n_components`` is omitted, the frequency spacing is chosen so the
+    discrete representation does not repeat within that time.  The returned
+    count is always odd, keeping the carrier as an explicit component.
+    """
+
+    angular_frequencies: np.ndarray
+    relative_energy_density: np.ndarray
+    delta_omega: float
+    total_energy: float
+    central_wavelength: float
+    intensity_fwhm: float
+    span_fwhm: float
+    spectral_phase: object = 0.0
+
+    def __post_init__(self):
+        frequencies, density, phases, spacing = _validated_spectrum_arrays(
+            self.angular_frequencies,
+            self.relative_energy_density,
+            self.spectral_phase,
+        )
+        metadata = (
+            self.total_energy,
+            self.central_wavelength,
+            self.intensity_fwhm,
+            self.span_fwhm,
+        )
+        if any(not np.isfinite(value) or value <= 0 for value in metadata):
+            raise ValueError("Gaussian pulse metadata must be positive and finite")
+        if not np.isclose(self.delta_omega, spacing, rtol=1e-10):
+            raise ValueError("delta_omega does not match the frequency grid")
+        carrier = 2 * np.pi * C / self.central_wavelength
+        centre_index = len(frequencies) // 2
+        if len(frequencies) % 2 != 1 or not np.isclose(
+            frequencies[centre_index], carrier, rtol=1e-12, atol=0.0
+        ):
+            raise ValueError(
+                "the frequency grid must contain the carrier at its centre"
+            )
+        object.__setattr__(self, "angular_frequencies", frequencies)
+        object.__setattr__(self, "relative_energy_density", density)
+        object.__setattr__(self, "spectral_phase", phases)
+        object.__setattr__(self, "delta_omega", spacing)
+
+    @property
+    def central_angular_frequency(self):
+        """Carrier angular frequency in radians per second."""
+        return 2 * np.pi * C / self.central_wavelength
+
+    @property
+    def angular_frequency_fwhm(self):
+        """Intensity-spectrum FWHM, ``4*ln(2)/intensity_fwhm``."""
+        return 4 * np.log(2) / self.intensity_fwhm
+
+    @classmethod
+    def from_intensity_fwhm(
+        cls,
+        *,
+        central_wavelength=800e-9,
+        intensity_fwhm=30e-15,
+        total_energy=1.0,
+        span_fwhm=2.0,
+        n_components=None,
+        minimum_period=None,
+        spectral_phase=0.0,
+    ):
+        """Construct a transform-limited Gaussian temporal spectrum.
+
+        ``total_energy`` sets only the common component scale.  A normalised
+        EPOCH profile may therefore use any positive value, while an
+        energy-calibrated three-dimensional calculation should retain the
+        physical pulse energy and effective area consistently.
+        """
+        values = (central_wavelength, intensity_fwhm, total_energy, span_fwhm)
+        if any(not np.isfinite(value) or value <= 0 for value in values):
+            raise ValueError("pulse parameters must be positive and finite")
+        if minimum_period is not None:
+            minimum_period = float(minimum_period)
+            if not np.isfinite(minimum_period) or minimum_period <= 0:
+                raise ValueError("minimum_period must be positive and finite")
+
+        carrier = 2 * np.pi * C / central_wavelength
+        frequency_fwhm = 4 * np.log(2) / intensity_fwhm
+        half_span = span_fwhm * frequency_fwhm
+        if carrier - half_span <= 0:
+            raise ValueError("the retained Gaussian spectrum reaches zero frequency")
+
+        if n_components is None:
+            if minimum_period is None:
+                n_components = 65
+            else:
+                maximum_spacing = 2 * np.pi / minimum_period
+                n_intervals = int(np.ceil(2 * half_span / maximum_spacing))
+                n_intervals = max(2, n_intervals)
+                if n_intervals % 2:
+                    n_intervals += 1
+                n_components = n_intervals + 1
+        if (
+            not isinstance(n_components, (int, np.integer))
+            or n_components < 3
+            or n_components % 2 != 1
+        ):
+            raise ValueError("n_components must be an odd integer of at least three")
+
+        offsets = np.linspace(-half_span, half_span, int(n_components))
+        frequencies = carrier + offsets
+        density = np.exp(-4 * np.log(2) * (offsets / frequency_fwhm) ** 2)
+        phases = _phase_array(spectral_phase, frequencies)
+        result = cls(
+            angular_frequencies=frequencies,
+            relative_energy_density=density,
+            delta_omega=float(frequencies[1] - frequencies[0]),
+            total_energy=float(total_energy),
+            central_wavelength=float(central_wavelength),
+            intensity_fwhm=float(intensity_fwhm),
+            span_fwhm=float(span_fwhm),
+            spectral_phase=phases,
+        )
+        if minimum_period is not None and result.period <= minimum_period:
+            raise ValueError(
+                "the selected component count does not meet minimum_period"
+            )
+        return result
+
+
 def reconstruct_analytic_signal(components, angular_frequencies, times):
     """Reconstruct ``2*sum(E_n exp(-i omega_n t))`` from positive frequencies."""
     components = np.asarray(components, dtype=complex)

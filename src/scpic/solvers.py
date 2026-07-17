@@ -18,6 +18,7 @@ def evaluate_SC_2D(
     k,
     *,
     boundary_model="pec_physical_optics",
+    chunk_size=64,
 ):
     """
     Evaluate the 2D boundary integral for a reflected TM field.
@@ -53,11 +54,18 @@ def evaluate_SC_2D(
         if dBy_dn_inc.shape != surface[0].shape:
             raise ValueError("dBy_dn_inc must match the mirror arrays")
 
+    if not isinstance(chunk_size, (int, np.integer)) or chunk_size < 1:
+        raise ValueError("chunk_size must be a positive integer")
+    dl = np.asarray(dl)
     By_obs = np.zeros(x_obs.shape, dtype=complex)
 
-    for i in range(len(x_obs)):
-        dx = x_obs[i] - x_m
-        dz = z_obs[i] - z_m
+    # Vectorising a bounded observation chunk greatly reduces the Python and
+    # SciPy-ufunc overhead of campaign-sized injection lines while keeping the
+    # temporary (n_observation, n_surface) arrays memory-bounded.
+    for start in range(0, len(x_obs), chunk_size):
+        stop = min(start + chunk_size, len(x_obs))
+        dx = x_obs[start:stop, None] - x_m[None, :]
+        dz = z_obs[start:stop, None] - z_m[None, :]
         R = np.sqrt(dx**2 + dz**2)
 
         # Prevent singularity if observation point is exactly on the mirror
@@ -78,10 +86,10 @@ def evaluate_SC_2D(
         dG_dn = dG_dR * dR_dn
 
         if boundary_model == "pec_physical_optics":
-            integrand = 2.0 * By_inc * dG_dn
+            integrand = 2.0 * By_inc[None, :] * dG_dn
         else:
-            integrand = By_inc * dG_dn - G * dBy_dn_inc
-        By_obs[i] = np.sum(integrand * dl)
+            integrand = By_inc[None, :] * dG_dn - G * dBy_dn_inc[None, :]
+        By_obs[start:stop] = np.sum(integrand * dl, axis=1)
 
     return By_obs
 

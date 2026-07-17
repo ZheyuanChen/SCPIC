@@ -439,3 +439,51 @@ complete local suite now passes with 54 tests.
 The original paraxial benchmark still agrees with its analytical waist to
 0.03%, and the complete six-case Vallières suite is numerically unchanged
 after the shared Zernike and incident-phase refactor.
+
+---
+
+## Phase 14: Campaign-grade Pulsed EPOCH2D Profiles (July 2026)
+
+The active f/2 EPOCH2D laser--electron campaign exposed a gap between file
+format support and an end-to-end pulsed 2D generator. The standalone TM path
+was monochromatic, propagated towards the supplied OAP90 `-x` example, and did
+not preserve the campaign's focus-defined duration and `+x` boundary geometry.
+
+`GaussianPulseSpectrum` now constructs a transform-limited spectrum directly
+from intensity FWHM. Its automatically selected odd component grid keeps the
+carrier explicit and makes the discrete period exceed a requested output
+window. `propagate_broadband_2d()` evaluates each frequency through the 2D
+physical-optics integral, reconstructs `(Ex,Ez,By)` on a rectilinear grid, and
+can normalise the complex spectrum at a focus reference. A requested focal
+peak time then predicts the earlier boundary arrival through the propagated
+spectral phase rather than a separate hand-set shift.
+
+The 2D integral was vectorised in bounded observation chunks. Independent
+frequencies can use opt-in shared-memory workers without copying the mirror
+arrays between processes. `IncidentFieldTM` accepts per-frequency wavenumber,
+complex amplitude and spectral phase while preserving the old monochromatic
+API.
+
+`generate_epoch2d_oap_pulse()` and the `scpic-generate-epoch2d` command now
+write campaign-sized `(n_t,n_y)` files and a manifest containing spectrum,
+period, geometry, direct carrier-focus diagnostics, phase risks, wall time and
+hashes. The manifest makes explicit the right-handed map from the OAP90 `-x`
+solution to an EPOCH `+x`, `x_min` laser. Low-amplitude phase tails can be
+filled from the nearest reliable phase before unwrapping. The campaign default
+is a 10⁻³ field floor (10⁻⁶ of peak intensity), which removes stored branch
+jumps in the tested production profile while leaving the physically important
+complex field unchanged. The manifest records stored phase steps as well as
+wrapped reliable-field diagnostics.
+
+Six new regressions cover Gaussian duration, discrete period, vectorised
+integration, focus normalisation, boundary group delay, serial/threaded
+equivalence, file shape and orientation. A campaign-sized local τ=60 fs run
+with 17 frequencies, 6,000 mirror points and four workers completed in 48.5 s
+under GNU `time`, using 389 MiB peak RSS and about 3.5 CPU cores. It produced
+two 10,259,208-byte files and an independent repeat gave identical amplitude
+and phase hashes. The profile realised a 143.5 fs boundary peak and 60.08 fs
+intensity FWHM; its 543.9 fs discrete period exceeds the 400 fs file window.
+The direct carrier reference gave a 1.029 µm 1/e field waist and a 10.8%
+longitudinal/transverse peak-field ratio. Viking
+surface/spectrum/derivative convergence and paired EPOCH vacuum/collision tests
+remain required before replacing LASY.

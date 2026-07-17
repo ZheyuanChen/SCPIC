@@ -160,7 +160,8 @@ All three-dimensional incident fields accept
 ### `evaluate_SC_2D(...)`
 
 Evaluates the 2D TM boundary integral at flattened observation coordinates.
-See `main.py` for a complete call.
+`chunk_size=64` bounds the vectorised `(observation, surface)` temporaries.
+See `main.py` for a complete monochromatic call.
 
 ### `evaluate_SC_3D(observation_points, surface, E_inc, B_inc, k, **options)`
 
@@ -182,6 +183,13 @@ Recovers the 2D electric components from a regularly sampled `By` grid with
 shape `(len(x), len(z))`.
 
 ## Spectra and reconstruction
+
+### `GaussianPulseSpectrum.from_intensity_fwhm(...)`
+
+Builds a transform-limited Gaussian spectrum whose reconstructed intensity
+envelope has the requested temporal FWHM. `minimum_period` selects an odd
+component count whose discrete period exceeds a requested EPOCH file window.
+The carrier is always an explicit central component.
 
 ### `SuperGaussianSpectrum.from_wavelength_bandwidth(...)`
 
@@ -237,6 +245,25 @@ spatiotemporal amplitude/phase files.
 Returns \(\epsilon_0c|\widetilde{\mathbf E}|^2/2\) in watts per square metre.
 
 ## Broadband propagation
+
+### `propagate_broadband_2d(...)`
+
+Returns `BroadbandPropagation2DResult` on a rectilinear `(x,z)` grid. Electric
+shape is `(n_t,n_x,n_z,2)` for `(Ex,Ez)` and magnetic shape is
+`(n_t,n_x,n_z)` for `By`. Important options include:
+
+- `reference_point` and `reference_step`;
+- `reference_normalisation="none"`, `"phase"`, or `"complex"`;
+- `envelope_peak_time` with `carrier_angular_frequency`;
+- `num_surface_points`, `solver_chunk_size`, and shared-memory `workers`.
+
+### `generate_epoch2d_oap_pulse(directory, **options)`
+
+Generates a complete normalised `(n_t,n_y)` EPOCH2D file pair and JSON
+manifest. The high-level path defines its spectrum at the focus, predicts the
+boundary arrival, maps the OAP90 result to `+x` injection from `x_min`, records
+a direct carrier-focus reference, and regularises only phase below the selected
+negligible-amplitude floor.
 
 ### `iter_broadband_field_chunks(...)`
 
@@ -324,12 +351,17 @@ Returns `measured/reference - 1`.
 
 ## EPOCH export
 
-### `epoch_amplitude_phase(field, field_scale=None, phase_reference=0, unwrap_phase=True)`
+### `epoch_amplitude_phase(field, field_scale=None, phase_reference=0, unwrap_phase=True, phase_amplitude_floor=None)`
 
 Returns `(amplitude, phase, field_scale)` without writing files.
 
 Phase is unwrapped sequentially along every array axis by default so EPOCH's
 linear interpolation does not cross artificial \(2\pi\) branch cuts.
+When `phase_amplitude_floor` is set, samples below that fraction of peak
+amplitude inherit the nearest reliable phase before unwrapping. Reliable field
+samples are unchanged modulo (2\pi). The campaign-level 2D generator defaults
+to a field-amplitude floor of (10^{-3}), corresponding to (10^{-6}) of peak
+intensity; the lower-level exporter remains opt-in.
 
 ### `epoch_phase_diagnostics(field, amplitude_floor=1e-6)`
 

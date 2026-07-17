@@ -45,11 +45,18 @@ from .mirrors import (
     SurfaceQuadrature3D,
 )
 from .pulse import (
+    GaussianPulseSpectrum,
     SampledSpectrum,
     SuperGaussianSpectrum,
     electric_intensity,
     reconstruct_analytic_signal,
     reconstruct_complex_envelope,
+)
+from .profile2d import (
+    BroadbandPropagation2DResult,
+    Epoch2DPulseGeneration,
+    generate_epoch2d_oap_pulse,
+    propagate_broadband_2d,
 )
 from .solvers import evaluate_SC_2D, evaluate_SC_3D
 
@@ -66,6 +73,8 @@ __all__ = [
     "MaxwellResiduals",
     "BroadbandFieldChunk",
     "BroadbandPropagationResult",
+    "BroadbandPropagation2DResult",
+    "Epoch2DPulseGeneration",
     "QuadratureConvergenceLevel",
     "QuadratureConvergenceResult",
     "ParabolicMirror2D",
@@ -73,6 +82,7 @@ __all__ = [
     "SurfaceQuadrature3D",
     "ContourQuadrature3D",
     "SuperGaussianSpectrum",
+    "GaussianPulseSpectrum",
     "SampledSpectrum",
     "electric_from_magnetic_tm",
     "electric_intensity",
@@ -83,6 +93,7 @@ __all__ = [
     "maxwell_residuals",
     "observation_partition",
     "propagate_broadband_3d",
+    "propagate_broadband_2d",
     "relative_energy_error",
     "surface_quadrature_convergence",
     "time_domain_maxwell_residuals",
@@ -91,6 +102,7 @@ __all__ = [
     "evaluate_SC_2D",
     "evaluate_SC_3D",
     "export_epoch_profile",
+    "generate_epoch2d_oap_pulse",
     "reconstruct_analytic_signal",
     "reconstruct_complex_envelope",
 ]

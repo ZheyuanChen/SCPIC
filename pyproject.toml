@@ -16,6 +16,9 @@ dependencies = [
     "scipy>=1.7.0"
 ]
 
+[project.scripts]
+scpic-generate-epoch2d = "scpic.cli:generate_epoch2d_main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",

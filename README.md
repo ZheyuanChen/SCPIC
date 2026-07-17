@@ -50,6 +50,33 @@ injection profile:
 It writes `epoch_injection_data/amplitude.dat` and `phase.dat` and prints the
 electric-field `amp` value for the EPOCH laser block.
 
+## Pulsed EPOCH2D campaign profile
+
+The frequency-resolved 2D path defines a transform-limited Gaussian pulse at
+the intended focus, propagates every retained frequency through the TM
+physical-optics integral, and exports the carrier-referenced envelope required
+by EPOCH. The command defaults match the 800 nm, f/2, 24 µm-focus campaign
+geometry:
+
+```bash
+.venv/bin/scpic-generate-epoch2d \
+  --output epoch2d_pulse \
+  --tau-fwhm-fs 60 \
+  --workers 4
+```
+
+It writes `laser_amplitude.dat`, `laser_phase.dat`, and
+`laser_manifest.json`. The files have shape `(n_t, n_y)`. The manifest records
+the spectrum, discrete period, mirror and grid parameters, right-handed map to
+an EPOCH `+x`/`x_min` laser, generation time, phase diagnostics, direct carrier
+focus and hashes.
+
+The 2D model is a parabolic-cylinder TM reduction, not a slice of a circular
+3D OAP. Its exported tangential field maps as `E_y_epoch=E_z_scpic`; EPOCH's
+`simple_laser` boundary still reconstructs rather than directly imposes the
+longitudinal field. Every new campaign therefore needs a paired vacuum
+calibration and grid-convergence test before production.
+
 ## 3D example
 
 ```python

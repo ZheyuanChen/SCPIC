@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from scipy.ndimage import distance_transform_edt
 
 
 @dataclass(frozen=True)
@@ -115,6 +116,7 @@ def epoch_amplitude_phase(
     field_scale=None,
     phase_reference=0.0,
     unwrap_phase=True,
+    phase_amplitude_floor=None,
 ):
     """Convert an SCPIC phasor to normalised EPOCH amplitude and phase.
 
@@ -136,7 +138,12 @@ def epoch_amplitude_phase(
     handle phase continuity separately.  Use
     :func:`scpic.epoch_phase_diagnostics` before exporting a field that may
     contain a physical phase singularity; no scalar unwrapping can remove its
-    topological branch cut.
+    topological branch cut. If ``phase_amplitude_floor`` is supplied, phase
+    below that fraction of peak amplitude is replaced by the nearest reliable
+    sample before unwrapping. Phase is undefined there, and this reduces false
+    interpolation ramps caused by harmless numerical tail noise. A physical
+    phase singularity can still require an explicit branch cut; inspect
+    :func:`scpic.epoch_phase_diagnostics` and the stored phase steps.
     """
     field = np.asarray(field)
     if field.ndim not in {1, 2, 3}:
@@ -149,6 +156,14 @@ def epoch_amplitude_phase(
         raise ValueError("phase_reference must be finite")
     if not isinstance(unwrap_phase, (bool, np.bool_)):
         raise TypeError("unwrap_phase must be boolean")
+    if phase_amplitude_floor is not None:
+        phase_amplitude_floor = float(phase_amplitude_floor)
+        if (
+            not np.isfinite(phase_amplitude_floor)
+            or phase_amplitude_floor < 0
+            or phase_amplitude_floor >= 1
+        ):
+            raise ValueError("phase_amplitude_floor must satisfy 0 <= value < 1")
 
     magnitude = np.abs(field)
     peak = float(np.max(magnitude))
@@ -162,12 +177,22 @@ def epoch_amplitude_phase(
 
     amplitude = magnitude / field_scale
     phase = np.pi / 2 - (np.angle(field) - phase_reference)
+    if phase_amplitude_floor is not None:
+        reliable = magnitude > phase_amplitude_floor * peak
+        if np.any(~reliable):
+            nearest = distance_transform_edt(
+                ~reliable,
+                return_distances=False,
+                return_indices=True,
+            )
+            phase = np.where(reliable, phase, phase[tuple(nearest)])
     if unwrap_phase:
         for axis in range(phase.ndim):
             phase = np.unwrap(phase, axis=axis)
     else:
         phase = (phase + np.pi) % (2 * np.pi) - np.pi
-    phase = np.where(magnitude == 0, 0.0, phase)
+    if phase_amplitude_floor is None:
+        phase = np.where(magnitude == 0, 0.0, phase)
     return amplitude.astype(np.float64), phase.astype(np.float64), field_scale
 
 
@@ -178,6 +203,7 @@ def export_epoch_profile(
     field_scale=None,
     phase_reference=0.0,
     unwrap_phase=True,
+    phase_amplitude_floor=None,
     amplitude_filename="amplitude.dat",
     phase_filename="phase.dat",
 ):
@@ -202,6 +228,7 @@ def export_epoch_profile(
         field_scale=field_scale,
         phase_reference=phase_reference,
         unwrap_phase=unwrap_phase,
+        phase_amplitude_floor=phase_amplitude_floor,
     )
     amplitude_file = directory / amplitude_filename
     phase_file = directory / phase_filename

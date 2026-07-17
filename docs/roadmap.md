@@ -43,9 +43,11 @@ adapters would depend on actual instrument outputs:
 These should be implemented from representative files with known units and
 coordinate conventions, not from guessed formats.
 
-## Priority 3: campaign configuration and provenance
+## Priority 3: broader campaign configuration and provenance
 
-A declarative campaign runner could read a versioned TOML or YAML file and
+A focused EPOCH2D command now writes profile files plus a detailed JSON
+manifest for the supported OAP90 Gaussian-pulse workflow. A broader declarative
+campaign runner could still read a versioned TOML or YAML file and
 write:
 
 - profile files;
@@ -101,7 +103,7 @@ trefoil, is now implemented through `ChromaticZernikePhase`.
 ## Lower-priority engineering improvements
 
 - automated documentation generation from docstrings;
-- packaged command-line entry points;
+- additional packaged command-line entry points beyond EPOCH2D pulse generation;
 - Zarr or HDF5 campaign writers;
 - resumable on-disk spectral caches;
 - profiling and optional compiled CPU kernels;

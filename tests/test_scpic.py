@@ -77,6 +77,19 @@ def test_epoch_phase_is_unwrapped_for_linear_interpolation():
     assert np.all(wrapped < np.pi)
 
 
+def test_epoch_phase_regularises_numerically_undefined_low_amplitude_tail():
+    amplitude = np.array([1e-12, 1e-12, 1.0, 0.9, 1e-12])
+    source_phase = np.array([2.8, -2.7, 0.2, 0.3, -2.5])
+    field = amplitude * np.exp(1j * source_phase)
+
+    _, phase, _ = epoch_amplitude_phase(field, phase_amplitude_floor=1e-6)
+
+    np.testing.assert_allclose(phase[:2], phase[2])
+    np.testing.assert_allclose(phase[-1], phase[-2])
+    with pytest.raises(ValueError, match="phase_amplitude_floor"):
+        epoch_amplitude_phase(field, phase_amplitude_floor=1.0)
+
+
 def test_epoch_export_is_float64_headerless_and_c_ordered(tmp_path):
     field = np.array([[1.0 + 0.0j, 0.0 + 1.0j, -1.0 + 0.0j], [1.0 - 1.0j, 0.5j, 0.0j]])
     result = export_epoch_profile(tmp_path, field)

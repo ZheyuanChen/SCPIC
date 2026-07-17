@@ -10,6 +10,7 @@ the separate two-dimensional solver is a TM reduction intended for EPOCH2D.
 | Goal | Document |
 |---|---|
 | Generate a first monochromatic or broadband profile | [User guide](user_guide.md) |
+| Generate a pulsed f/2-style EPOCH2D profile | [User guide, EPOCH export](user_guide.md#10-epoch-export) |
 | Decide whether a result is sufficiently converged | [Validation and acceptance](validation.md) |
 | Look up classes, functions, array shapes, and return values | [API reference](api_reference.md) |
 | Understand the implemented equations and paper benchmarks | [Three-dimensional methodology](methodology_3d.md) |
@@ -56,6 +57,7 @@ directly impose the longitudinal electric field.
 The present evidence includes:
 
 - a 2D paraxial Gaussian waist benchmark;
+- focus-defined pulsed 2D TM profile and group-delay regressions;
 - all six Vallières linear/TM01 and HNAP/OAP90/TP benchmarks;
 - independent surface and spectral convergence studies;
 - frequency-domain and time-domain Maxwell residual tests;

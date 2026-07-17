@@ -554,6 +554,35 @@ print(exported.field_scale)
 
 Set the EPOCH laser `amp` to `exported.field_scale`.
 
+### Pulsed 2D OAP profile
+
+For a transform-limited Gaussian pulse defined at focus:
+
+```bash
+scpic-generate-epoch2d \
+  --output epoch2d_pulse \
+  --wavelength-um 0.8 \
+  --tau-fwhm-fs 60 \
+  --focus-distance-um 24 \
+  --boundary-peak-time-fs 143.31487238414786 \
+  --f-number 2 \
+  --n-surface 6000 \
+  --workers 4
+```
+
+The full spectrum is normalised at the intended focus. Its temporal origin is
+chosen there, then frequency-resolved propagation predicts the earlier
+boundary arrival. The files are suitable for an EPOCH `x_min`, `+x` laser
+because the generator applies the documented coordinate/component mapping in
+its manifest. The optical model remains a 2D parabolic cylinder.
+
+Use one Slurm task with `--cpus-per-task` equal to `--workers`; independent
+frequencies use shared-memory threads. Converge `--n-surface`,
+`--n-components`, `--spectrum-span-fwhm`, and `--derivative-step-nm` on the
+complete complex boundary file. Reuse a converged profile across amplitudes
+only after EPOCH has measured the profile family's own boundary-to-focus
+correction.
+
 ### Spatiotemporal broadband plane
 
 For an OAP90 `x` boundary, construct the plane in EPOCH order:
@@ -642,6 +671,13 @@ if phase_check.has_phase_singularity:
 
 A nonzero winding count means that no globally continuous scalar phase exists.
 It does not mean that the optical field is invalid.
+
+`generate_epoch2d_oap_pulse()` uses a `phase_amplitude_floor` of `1e-3` by
+default. This changes phase only where intensity is below (10^{-6}) of peak,
+while avoiding ordinary-real interpolation through otherwise arbitrary tail
+branches. The generated manifest records both wrapped reliable-field
+diagnostics at a `1e-6` field floor and the maximum stored phase step on each
+file axis.
 
 ### Array ordering
 
@@ -807,6 +843,8 @@ silently applied to new results.
   multiplying the pulse shape twice.
 - Comparing envelope intensity with an instantaneous carrier field.
 - Claiming full-vector high-NA injection from EPOCH `simple_laser`.
+- Reusing a LASY boundary-amplitude correction for an SCPIC profile without a
+  new vacuum calibration.
 
 ## 14. Minimal production checklist
 
