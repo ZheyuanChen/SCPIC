@@ -32,6 +32,7 @@ class EpochPhaseDiagnostics:
 
 
 def _wrapped_phase_difference(difference):
+    """Map a phase difference to the principal interval ``[-pi, pi)``."""
     return np.angle(np.exp(1j * difference))
 
 
@@ -72,6 +73,8 @@ def epoch_phase_diagnostics(field, *, amplitude_floor=1e-6):
             )
             maximum_step = max(maximum_step, float(np.max(np.abs(differences[valid]))))
 
+    # Sum principal phase differences around every two-dimensional cell. A
+    # circulation near +/-2*pi marks a resolved zero or phase singularity.
     winding_cell_count = 0
     for first_axis in range(field.ndim):
         for second_axis in range(first_axis + 1, field.ndim):
@@ -180,6 +183,9 @@ def epoch_amplitude_phase(
     if phase_amplitude_floor is not None:
         reliable = magnitude > phase_amplitude_floor * peak
         if np.any(~reliable):
+            # Phase is undefined in the tail. Copying the nearest reliable
+            # value prevents noise there from creating large interpolation
+            # ramps without changing any meaningful complex-field sample.
             nearest = distance_transform_edt(
                 ~reliable,
                 return_distances=False,

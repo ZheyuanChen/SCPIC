@@ -26,6 +26,7 @@ def _write(case_dir, field, y, z, **metadata):
 
 
 def generate_static_gaussian(case_dir):
+    """Write an astigmatic Gaussian to check both transverse array axes."""
     y = np.linspace(-5e-6, 5e-6, 65)
     z = np.linspace(-5e-6, 5e-6, 61)
     Y, Z = np.meshgrid(y, z, indexing="xy")
@@ -34,6 +35,7 @@ def generate_static_gaussian(case_dir):
 
 
 def generate_phase_tilt(case_dir):
+    """Write independent y- and z-phase slopes with known ray angles."""
     wavelength = 1e-6
     y = np.linspace(-5e-6, 5e-6, 65)
     z = np.linspace(-5e-6, 5e-6, 61)
@@ -70,6 +72,7 @@ def _fwhm(coordinate, values):
 
 
 def generate_scpic_focus_3d(case_dir):
+    """Write the dominant tangential field upstream of the 3D OAP90 focus."""
     wavelength = 1e-6
     k = 2 * np.pi / wavelength
     mirror = ParabolicMirror3D(f0=10e-6, D=20e-6, mirror_type="OAP90")
@@ -87,8 +90,8 @@ def generate_scpic_focus_3d(case_dir):
     Y, Z = np.meshgrid(y, z, indexing="xy")
     observations = np.column_stack((np.full(Y.size, 4e-6), Y.ravel(), Z.ravel()))
     electric, _ = evaluate_SC_3D(observations, surface, E_inc, B_inc, k, chunk_size=32)
-    # An x-boundary laser with pol=90 drives Ez, the dominant transverse
-    # component of this OAP90/polarisation geometry.
+    # For an x boundary, pol=90 drives E_z: the dominant tangential component
+    # for this incident polarisation and OAP90 orientation.
     field = electric[:, 2].reshape(Y.shape)
     reference = np.angle(field.ravel()[np.argmax(np.abs(field))])
 
@@ -121,6 +124,7 @@ GENERATORS_3D = {
 
 
 def generate_all(root):
+    """Generate every EPOCH3D integration profile below ``root``."""
     root = Path(root)
     for name, generator in GENERATORS_3D.items():
         case_dir = root / name

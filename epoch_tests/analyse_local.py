@@ -53,6 +53,7 @@ def _fit_waist(y, values, initial):
 
 
 def check_static_gaussian():
+    """Check the recovered Gaussian waist and plane-wave impedance."""
     dumps = _dumps("static_gaussian")
     dump = max(dumps, key=lambda item: np.sum(item["Electric Field/Ey"].data ** 2))
     ey = dump["Electric Field/Ey"].data
@@ -68,6 +69,7 @@ def check_static_gaussian():
 
 
 def check_phase_ramp():
+    """Check the sign and magnitude of the integrated Poynting angle."""
     dumps = _dumps("phase_ramp")
     dump = max(dumps, key=lambda item: np.sum(item["Electric Field/Ey"].data ** 2))
     ex = dump["Electric Field/Ex"].data
@@ -81,6 +83,7 @@ def check_phase_ramp():
 
 
 def check_scpic_focus():
+    """Compare the propagated focal waist with the direct SCPIC reference."""
     dumps = _dumps("scpic_focus")
     planes = []
     for dump in dumps:
@@ -104,6 +107,7 @@ def check_scpic_focus():
 
 
 def main():
+    """Run all EPOCH2D output checks."""
     check_static_gaussian()
     check_phase_ramp()
     check_scpic_focus()

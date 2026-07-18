@@ -301,6 +301,7 @@ def run_convergence(mirror_type="OAP90", polarisation="linear", **kwargs):
 
 
 def main():
+    """Parse command-line settings and print or save benchmark diagnostics."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--mirror", choices=("HNAP", "OAP90", "TP"), default="OAP90")
     parser.add_argument(

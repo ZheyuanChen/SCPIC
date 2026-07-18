@@ -258,6 +258,7 @@ def _workflow(ax):
 
 
 def build_figure(args):
+    """Build the two-scale optical diagram and frequency-domain code path."""
     figure = plt.figure(figsize=(14, 9), constrained_layout=True)
     grid = figure.add_gridspec(2, 2, height_ratios=(4.6, 1.25))
     _physical_geometry(
@@ -282,6 +283,7 @@ def build_figure(args):
 
 
 def parse_args():
+    """Return command-line settings for the optical geometry and output file."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output",
@@ -298,6 +300,7 @@ def parse_args():
 
 
 def main():
+    """Validate settings and write a deterministic SVG or raster figure."""
     args = parse_args()
     positive = (
         args.wavelength_um,

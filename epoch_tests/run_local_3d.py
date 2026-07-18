@@ -13,6 +13,7 @@ DEFAULT_EPOCH = HERE.parents[1] / "epoch_dev" / "epoch3d" / "bin" / "epoch3d"
 
 
 def main():
+    """Generate selected cases, run EPOCH3D and retain its combined log."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--epoch-bin",

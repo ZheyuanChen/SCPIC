@@ -55,9 +55,9 @@ SCPIC works in the `(x,z)` plane and assumes translational invariance in the
 omitted `y` direction.  The native reflected beam travels towards `-x` and has
 TM components
 
-\[
+$$
   (E_x,E_z,B_y).
-\]
+$$
 
 The campaign maps this onto EPOCH's beam travelling from `x_min` towards `+x`:
 
@@ -77,18 +77,18 @@ coordinate transformation and does not require complex conjugation.
 
 For every retained angular frequency, the incident magnetic phasor is
 
-\[
+$$
 B_y^{\mathrm{inc}}(x,z)
  = \frac{E_0}{c}
    \exp\!\left[-\frac{(x-x_c)^2}{w_{\mathrm{in}}^2}\right]
    \exp(-ikz).
-\]
+$$
 
 SCPIC uses the convention
 
-\[
+$$
 \text{physical field}=\operatorname{Re}\!\left[F e^{-i\omega t}\right],
-\]
+$$
 
 so `exp(-ikz)` propagates towards `-z`.  The lateral field amplitude is a
 Gaussian with 1/e radius `w_in`; its intensity is proportional to
@@ -97,12 +97,12 @@ so this is a Gaussian sheet rather than a circular beam.
 
 For the campaign,
 
-\[
+$$
 w_{\mathrm{in}}
  = \frac{f_{\mathrm{eff}}}{2N}
  = \frac{50.8\ \mathrm{mm}}{2\times2}
  = 12.7\ \mathrm{mm}.
-\]
+$$
 
 The current upstream model is deliberately ideal:
 
@@ -120,30 +120,30 @@ The implementation is `IncidentFieldTM` in
 
 The parent parabola is
 
-\[
+$$
 z_m(x)=\frac{x^2}{4f_0}-f_0,
-\]
+$$
 
 with focus at `(0,0)`.  The campaign sets
 
-\[
+$$
 f_0=\frac{f_{\mathrm{eff}}}{2}=25.4\ \mathrm{mm}.
-\]
+$$
 
 For the `OAP90` segment, the illuminated centre is
 
-\[
+$$
 x_c=2f_0=50.8\ \mathrm{mm}, \qquad z_c=0.
-\]
+$$
 
 The surface slope at that point is one.  A chief ray arriving along `-z` is
 therefore reflected by 90 degrees along `-x`, towards the origin.
 
 The integration surface extends to three incident beam radii on either side:
 
-\[
+$$
 D_{\mathrm{computational}}=6w_{\mathrm{in}}=76.2\ \mathrm{mm}.
-\]
+$$
 
 This is a numerical truncation, not the diameter used to define the f-number.
 At either endpoint the incident field is only `exp(-9)`, about
@@ -151,9 +151,9 @@ At either endpoint the incident field is only `exp(-9)`, about
 result the f-number would therefore be misleading: the intended Gaussian
 illumination is f/2 because
 
-\[
+$$
 N=\frac{f_{\mathrm{eff}}}{2w_{\mathrm{in}}}=2.
-\]
+$$
 
 The geometry, surface normals and trapezoidal line weights are constructed by
 `ParabolicMirror2D` in [`src/scpic/mirrors.py`](src/scpic/mirrors.py).
@@ -163,25 +163,25 @@ The geometry, surface normals and trapezoidal line weights are constructed by
 In this TM reduction, `B_y` obeys the scalar Helmholtz equation.  SCPIC uses
 the outgoing two-dimensional Green function
 
-\[
+$$
 G(P,Q)=\frac{i}{4}H_0^{(1)}(k|P-Q|).
-\]
+$$
 
 The default perfect-conductor physical-optics boundary approximation is
 
-\[
+$$
 B_y^{\mathrm{total}}\big|_S\simeq2B_y^{\mathrm{inc}},
 \qquad
 \partial_nB_y^{\mathrm{total}}\big|_S\simeq0.
-\]
+$$
 
 The propagated magnetic field is consequently
 
-\[
+$$
 B_y(P)\simeq
 \int_S2B_y^{\mathrm{inc}}(Q)
        \frac{\partial G(P,Q)}{\partial n_Q}\,d\ell_Q.
-\]
+$$
 
 `evaluate_SC_2D()` in [`src/scpic/solvers.py`](src/scpic/solvers.py) evaluates
 this integral using Hankel functions and bounded observation chunks.  This is
@@ -192,11 +192,11 @@ physical-optics integrand.
 
 Once `B_y` has been propagated, Ampère's law gives
 
-\[
+$$
 E_x=-\frac{ic}{k}\frac{\partial B_y}{\partial z},
 \qquad
 E_z=\frac{ic}{k}\frac{\partial B_y}{\partial x}.
-\]
+$$
 
 The campaign evaluates three nearby longitudinal planes,
 `x=24 µm + (-8,0,8) nm`, so that the required `x` derivative can be taken.
@@ -225,19 +225,19 @@ precompensated for the complex mirror response.
 
 The requested focal peak time is
 
-\[
+$$
 t_{\mathrm{focus}}
  =143.3149\ \mathrm{fs}+\frac{24\ \mu\mathrm{m}}{c}
  \simeq223.37\ \mathrm{fs}.
-\]
+$$
 
 Propagation predicts the earlier boundary arrival.  The individual frequency
 fields are then reconstructed as the carrier-referenced complex envelope
 
-\[
+$$
 \widetilde E(t)
  =2\sum_n E_n\exp[-i(\omega_n-\omega_0)t].
-\]
+$$
 
 This is the appropriate quantity for EPOCH because EPOCH supplies the
 `omega0*t` carrier internally.
@@ -246,16 +246,16 @@ This is the appropriate quantity for EPOCH because EPOCH supplies the
 
 For an ideal paraxial Gaussian focused by a lens or parabola,
 
-\[
+$$
 w_f=\frac{\lambda f_{\mathrm{eff}}}{\pi w_{\mathrm{in}}}
     =\frac{2\lambda N}{\pi}.
-\]
+$$
 
 For `lambda=0.8 µm` and `N=2`,
 
-\[
+$$
 w_f^{\mathrm{paraxial}}=1.01859\ \mu\mathrm{m}.
-\]
+$$
 
 The corresponding Rayleigh length is approximately `4.07 µm`.  The EPOCH
 boundary is therefore about 5.9 Rayleigh lengths before focus, where a
@@ -340,9 +340,9 @@ the current boundary injector.
 
 At f/10 the paraxial waist would be
 
-\[
+$$
 w_f^{\mathrm{paraxial}}=5.09296\ \mu\mathrm{m}.
-\]
+$$
 
 Repeating the direct carrier comparison gives:
 
@@ -361,11 +361,11 @@ remain at any finite f-number.
 The longitudinal component is also physical.  For a focused Gaussian, its
 leading estimate is
 
-\[
+$$
 \frac{\max|E_x|}{\max|E_z|}
  \simeq\frac{\sqrt{2/e}}{kw_f}
  \simeq\frac{0.214}{N},
-\]
+$$
 
 which gives 10.7% at f/2 and 2.14% at f/10, in close agreement with the direct
 SCPIC results.  A vector paraxial Gaussian includes this leading correction; a
@@ -437,22 +437,22 @@ module.  `generate_epoch2d_oap_pulse()`:
 [`src/scpic/export.py`](src/scpic/export.py) converts the complex envelope to
 EPOCH's convention.  SCPIC uses
 
-\[
+$$
 \operatorname{Re}[F e^{-i\omega t}],
-\]
+$$
 
 whereas EPOCH injects
 
-\[
+$$
 A\sin(\omega t+\phi_{\mathrm{EPOCH}}).
-\]
+$$
 
 Therefore
 
-\[
+$$
 A=|F|,\qquad
 \phi_{\mathrm{EPOCH}}=\frac{\pi}{2}-\arg F.
-\]
+$$
 
 The exporter normalises amplitude to one, regularises meaningless phase below
 the selected tail threshold, unwraps phase along time and transverse axes, and

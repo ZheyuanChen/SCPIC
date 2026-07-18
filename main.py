@@ -9,6 +9,7 @@ from scpic.solvers import evaluate_SC_2D
 
 
 def main():
+    """Generate one monochromatic demonstration profile for ``x_max``."""
     wavelength = 1e-6
     k = 2 * np.pi / wavelength
 

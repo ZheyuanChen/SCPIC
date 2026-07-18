@@ -52,6 +52,7 @@ class Epoch2DPulseGeneration:
 
 
 def _frequency_values(values, wavenumbers, name):
+    """Broadcast a scalar or evaluate frequency-dependent input on ``k``."""
     if callable(values):
         values = values(wavenumbers)
     values = np.asarray(values, dtype=float)
@@ -63,6 +64,7 @@ def _frequency_values(values, wavenumbers, name):
 
 
 def _validated_axis(values, name, *, minimum_size=3):
+    """Return a finite, strictly increasing one-dimensional coordinate axis."""
     values = np.asarray(values, dtype=float)
     if (
         values.ndim != 1
@@ -78,6 +80,7 @@ def _validated_axis(values, name, *, minimum_size=3):
 
 
 def _reference_grid(point, step):
+    """Build the 3-by-3 stencil used to recover the reference ``E_z``."""
     point = np.asarray(point, dtype=float)
     step = float(step)
     if point.shape != (2,) or np.any(~np.isfinite(point)):
@@ -101,6 +104,12 @@ def _solve_unit_frequency(
     solver_chunk_size,
     reference_grid,
 ):
+    """Propagate a unit incident pupil at one wavenumber.
+
+    The optional reference stencil is evaluated separately from the output
+    grid. This allows focal normalisation even when the requested output is an
+    upstream EPOCH boundary.
+    """
     x_m, z_m, nx, nz, dl, x_center = mirror_surface
     by_incident = incident.B_y(x_m, z_m, x_center=x_center, k=k)
     dby_incident = incident.dBy_dn(
@@ -270,10 +279,16 @@ def propagate_broadband_2d(
         if np.any(np.abs(references) <= threshold):
             raise ValueError("reference E_z is zero or numerically unresolved")
         if reference_normalisation == "phase":
+            # Remove the focal spectral phase but retain the mirror's
+            # frequency-dependent gain.
             scales *= np.exp(-1j * np.angle(references))
         else:
+            # Invert the complete complex response. After multiplication the
+            # reference E_z coefficients equal component_coefficients exactly.
             scales /= references
     if envelope_peak_time is not None:
+        # With exp[-i(omega-omega_c)t], a positive spectral slope delays the
+        # carrier-referenced envelope to envelope_peak_time.
         scales *= np.exp(
             1j * (angular_frequencies - carrier_angular_frequency) * envelope_peak_time
         )
@@ -309,6 +324,7 @@ def propagate_broadband_2d(
 
 
 def _fwhm(samples, values):
+    """Measure FWHM using linear interpolation at the outer crossings."""
     samples = np.asarray(samples, dtype=float)
     values = np.asarray(values, dtype=float)
     if samples.ndim != 1 or values.shape != samples.shape:
@@ -331,6 +347,7 @@ def _fwhm(samples, values):
 
 
 def _sha256(path):
+    """Return the hexadecimal SHA-256 digest of a generated profile file."""
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -409,6 +426,7 @@ def generate_epoch2d_oap_pulse(
     transverse = np.linspace(transverse_min, transverse_max, int(n_transverse))
     carrier = 2 * np.pi * C / central_wavelength
     focus_time = boundary_peak_time + focus_distance / C
+    # Keep the first periodic replica outside the requested EPOCH time window.
     minimum_period = 1.25 * (time_end - time_start)
     spectrum = GaussianPulseSpectrum.from_intensity_fwhm(
         central_wavelength=central_wavelength,
@@ -420,6 +438,8 @@ def generate_epoch2d_oap_pulse(
     )
     spectrum.validate_envelope_time_samples(times, carrier)
 
+    # The campaign f-number is defined with the Gaussian 1/e field diameter,
+    # not with the wider numerical integration aperture.
     incident_radius = effective_focal_length / (2 * f_number)
     mirror = ParabolicMirror2D(
         f0=effective_focal_length / 2,
@@ -431,6 +451,8 @@ def generate_epoch2d_oap_pulse(
         wavelength=central_wavelength,
         E0=1.0,
     )
+    # Three longitudinal planes are required because E_z is recovered from
+    # dB_y/dx. Only the centre plane is passed to EPOCH.
     x = focus_distance + derivative_step * np.array([-1.0, 0.0, 1.0])
     propagation = propagate_broadband_2d(
         x,
@@ -448,6 +470,8 @@ def generate_epoch2d_oap_pulse(
         solver_chunk_size=solver_chunk_size,
         workers=workers,
     )
+    # This monochromatic focal solve is independent of the broadband inverse
+    # normalisation and provides a direct optical reference for the manifest.
     focus_x = derivative_step * np.array([-1.0, 0.0, 1.0])
     focus_electric, _, _ = _solve_unit_frequency(
         carrier / C,
@@ -470,6 +494,8 @@ def generate_epoch2d_oap_pulse(
         np.max(np.abs(focus_electric[1, :, 0]))
         / np.max(np.abs(focus_electric[1, :, 1]))
     )
+    # Native E_z becomes tangential E_y after mapping the -x SCPIC solution to
+    # a +x EPOCH laser at x_min.
     epoch_envelope = propagation.electric[:, 1, :, 1]
     diagnostics = epoch_phase_diagnostics(epoch_envelope)
     directory = Path(directory)
@@ -481,6 +507,8 @@ def generate_epoch2d_oap_pulse(
         amplitude_filename=f"{file_prefix}_amplitude.dat",
         phase_filename=f"{file_prefix}_phase.dat",
     )
+    # Check the values as written, since EPOCH interpolates this unwrapped
+    # float64 phase rather than the original complex envelope.
     stored_phase = np.fromfile(exported.phase_file, dtype=np.float64).reshape(
         exported.shape
     )

@@ -1,3 +1,5 @@
+"""Parabolic-reflector geometry and surface quadrature."""
+
 from dataclasses import dataclass
 
 import numpy as np
@@ -24,12 +26,15 @@ class ContourQuadrature3D:
 
 
 class ParabolicMirror2D:
+    """Finite segment of the parent parabola used by the 2D TM solver.
+
+    The parent curve is ``z = x**2/(4*f0) - f0`` with its focus at the
+    origin. ``D`` is the projected extent along ``x``. The ``OAP90`` segment
+    is centred at ``x = 2*f0``; ``HNAP`` is centred on the parent axis; and
+    ``offset`` uses the supplied centre explicitly.
+    """
+
     def __init__(self, f0, D, mirror_type="OAP90", offset=0.0):
-        """
-        f0: Focal length
-        D: Beam/Mirror diameter
-        mirror_type: 'HNAP' (on-axis) or 'OAP90' (90-deg off-axis)
-        """
         if f0 <= 0 or D <= 0:
             raise ValueError("f0 and D must be positive")
         if mirror_type not in {"OAP90", "HNAP", "offset"}:
@@ -40,22 +45,27 @@ class ParabolicMirror2D:
         self.offset = offset
 
     def get_surface(self, num_points=2000):
+        """Sample the mirror and return normals and trapezoidal line weights.
+
+        The returned tuple is ``(x, z, nx, nz, dl, x_center)``. The normal
+        points towards the incident half-space, matching the sign convention
+        in :func:`scpic.evaluate_SC_2D`. ``dl`` already contains the endpoint
+        half-weights and must not be weighted again by the caller.
+        """
         if num_points < 2:
             raise ValueError("num_points must be at least 2")
-        # The 90-degree reflection point is at x = 2*f0
         if self.mirror_type == "OAP90":
+            # The surface slope is unity here, giving a 90-degree chief ray.
             x_center = 2 * self.f0
         elif self.mirror_type == "HNAP":
             x_center = 0.0
         else:  # explicitly requested generic offset segment
             x_center = self.offset
 
-        # 1D array representing the mirror surface in x
         x_m = np.linspace(x_center - self.D / 2, x_center + self.D / 2, num_points)
-        # Parabola equation: z = x^2 / (4f) - f
         z_m = (x_m**2) / (4 * self.f0) - self.f0
 
-        # Calculate the normal vector n = (nx, nz) pointing INWARD towards the incoming beam
+        # Positive nz points back towards the plane wave incident along -z.
         dz_dx = x_m / (2 * self.f0)
         norm = np.sqrt(1 + dz_dx**2)
         nx = -dz_dx / norm
@@ -191,6 +201,7 @@ class ParabolicMirror3D:
 
     @property
     def aperture_centre(self):
+        """Projected ``(x, y)`` centre of the selected aperture."""
         if self.mirror_type == "OAP90":
             return np.array([2 * self.f0, 0.0])
         if self.mirror_type in {"HNAP", "TP"}:
@@ -206,6 +217,7 @@ class ParabolicMirror3D:
 
     @property
     def projected_area(self):
+        """Area of the circular or annular aperture in the ``x-y`` plane."""
         return np.pi * (self.D**2 - self.inner_diameter**2) / 4
 
     def _points_from_xy(self, xy):
@@ -221,7 +233,13 @@ class ParabolicMirror3D:
         return unnormalised / np.linalg.norm(unnormalised, axis=1)[:, None]
 
     def surface_quadrature(self, n_radial=40, n_azimuthal=80):
-        """Return tensor-product Gauss--Legendre surface quadrature."""
+        """Return tensor-product Gauss--Legendre surface quadrature.
+
+        Radial and azimuthal nodes are defined in the local circular aperture,
+        then translated to the selected parent-paraboloid segment. Both true
+        surface weights and projected aperture weights are retained because
+        the propagator and incident-power normalisation use different areas.
+        """
         if n_radial < 1 or n_azimuthal < 2:
             raise ValueError("n_radial >= 1 and n_azimuthal >= 2 are required")
 
@@ -245,6 +263,8 @@ class ParabolicMirror3D:
         xy = local_xy + self.aperture_centre
         points = self._points_from_xy(xy)
         normals = self._normals_from_xy(xy)
+        # rho*d(rho)*d(phi) integrates over the projected pupil. Multiplying
+        # by sqrt(1 + |grad z|^2) converts this to the reflector surface area.
         projected_weights = (rho_grid * wr_grid * wp_grid).ravel()
         surface_jacobian = np.sqrt(
             1 + (xy[:, 0] / (2 * self.f0)) ** 2 + (xy[:, 1] / (2 * self.f0)) ** 2
@@ -259,7 +279,12 @@ class ParabolicMirror3D:
         )
 
     def contour_quadrature(self, n_azimuthal=160, rim="outer"):
-        """Return an oriented Gauss--Legendre quadrature for an aperture rim."""
+        """Return an oriented Gauss--Legendre quadrature for an aperture rim.
+
+        The outer rim follows increasing azimuth. The inner rim is reversed so
+        that both follow the orientation induced by the same open surface.
+        ``d_ell`` includes the Gauss--Legendre weights.
+        """
         if n_azimuthal < 2:
             raise ValueError("n_azimuthal must be at least 2")
         if rim not in {"outer", "inner"}:

@@ -23,12 +23,14 @@ def _write(case_dir, field, y, **export_kwargs):
 
 
 def generate_static_gaussian(case_dir):
+    """Write a real Gaussian used to check loader shape and field scaling."""
     y = np.linspace(-6e-6, 6e-6, 257)
     field = np.exp(-((y / 2e-6) ** 2)).astype(complex)
     _write(case_dir, field, y)
 
 
 def generate_phase_ramp(case_dir):
+    """Write a Gaussian with the transverse phase slope for a +10-degree ray."""
     wavelength = 1e-6
     angle = np.deg2rad(10.0)
     y = np.linspace(-6e-6, 6e-6, 257)
@@ -38,6 +40,7 @@ def generate_phase_ramp(case_dir):
 
 
 def generate_scpic_focus(case_dir):
+    """Write the tangential field five micrometres before the 2D OAP focus."""
     wavelength = 1e-6
     k = 2 * np.pi / wavelength
     mirror = ParabolicMirror2D(f0=10e-6, D=20e-6, mirror_type="OAP90")
@@ -68,6 +71,7 @@ GENERATORS = {
 
 
 def generate_all(root):
+    """Generate every EPOCH2D integration profile below ``root``."""
     root = Path(root)
     for name, generator in GENERATORS.items():
         case_dir = root / name

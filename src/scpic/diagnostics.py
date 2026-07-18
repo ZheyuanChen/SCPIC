@@ -22,10 +22,12 @@ class MaxwellResiduals:
 
 
 def _rms(values):
+    """Root-mean-square magnitude for real or complex arrays."""
     return float(np.sqrt(np.mean(np.abs(values) ** 2)))
 
 
 def _normalised_rms(residual, scale):
+    """Normalise an RMS residual, retaining an explicit zero-scale result."""
     scale = float(scale)
     value = _rms(residual)
     if scale == 0:
@@ -259,6 +261,7 @@ def electromagnetic_energy_density(electric, magnetic, *, cycle_averaged=True):
 
 
 def _integrate_rectilinear(values, coordinates):
+    """Integrate scalar data over matching rectilinear coordinate axes."""
     result = np.asarray(values)
     if result.ndim != len(coordinates):
         raise ValueError(

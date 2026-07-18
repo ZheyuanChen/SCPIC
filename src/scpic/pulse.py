@@ -110,6 +110,7 @@ class _DiscreteSpectrumMethods:
         )
 
     def recovered_energy(self, amplitudes, effective_area):
+        """Recover pulse energy from amplitudes as a normalisation check."""
         amplitudes = np.asarray(amplitudes)
         if amplitudes.shape != self.angular_frequencies.shape:
             raise ValueError("amplitudes must match the spectrum")

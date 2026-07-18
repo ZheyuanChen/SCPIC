@@ -1,3 +1,5 @@
+"""Two- and three-dimensional physical-optics propagation integrals."""
+
 import numpy as np
 from scipy.special import hankel1
 
@@ -20,8 +22,7 @@ def evaluate_SC_2D(
     boundary_model="pec_physical_optics",
     chunk_size=64,
 ):
-    """
-    Evaluate the 2D boundary integral for a reflected TM field.
+    """Evaluate the 2D boundary integral for a reflected TM field.
 
     The default ``pec_physical_optics`` model applies the physical-optics
     boundary values for a perfectly conducting mirror: the tangential
@@ -59,29 +60,26 @@ def evaluate_SC_2D(
     dl = np.asarray(dl)
     By_obs = np.zeros(x_obs.shape, dtype=complex)
 
-    # Vectorising a bounded observation chunk greatly reduces the Python and
-    # SciPy-ufunc overhead of campaign-sized injection lines while keeping the
-    # temporary (n_observation, n_surface) arrays memory-bounded.
+    # Each temporary array has shape (chunk_size, n_surface). This removes the
+    # Python loop over observation points without allocating the complete
+    # campaign grid at once.
     for start in range(0, len(x_obs), chunk_size):
         stop = min(start + chunk_size, len(x_obs))
         dx = x_obs[start:stop, None] - x_m[None, :]
         dz = z_obs[start:stop, None] - z_m[None, :]
         R = np.sqrt(dx**2 + dz**2)
 
-        # Prevent singularity if observation point is exactly on the mirror
         if np.any(R == 0):
             raise ValueError(
                 "observation points must not lie on the integration surface"
             )
 
-        # 2D Green's Function
+        # Outgoing Green function for the exp(-i*omega*t) convention.
         G = 0.25j * hankel1(0, k * R)
 
-        # Derivative of Green's function with respect to normal n
-        # dH0(x)/dx = -H1(x)
+        # dH_0^(1)(u)/du = -H_1^(1)(u). The leading minus sign in dR/dn
+        # below appears because dx and dz point from source to observation.
         dG_dR = -0.25j * k * hankel1(1, k * R)
-
-        # dot product of grad_m(R) and normal
         dR_dn = -(dx * nx + dz * nz) / R
         dG_dn = dG_dR * dR_dn
 
@@ -102,6 +100,7 @@ def _validate_vector_field(values, n_points, name):
 
 
 def _source_gradient_green(observation_points, source_points, k):
+    """Return ``exp(ikR)/R`` and its source-position gradient."""
     displacement = observation_points[:, None, :] - source_points[None, :, :]
     distance = np.linalg.norm(displacement, axis=2)
     if np.any(distance == 0):
@@ -116,6 +115,7 @@ def _source_gradient_green(observation_points, source_points, k):
 
 
 def _select_array_backend(backend):
+    """Select an array module and the corresponding host conversion function."""
     if backend == "numpy":
         return np, np.asarray
     if backend == "cupy":
@@ -130,6 +130,7 @@ def _select_array_backend(backend):
 
 
 def _source_gradient_green_backend(observation_points, source_points, k, xp):
+    """Backend-independent form of :func:`_source_gradient_green`."""
     displacement = observation_points[:, None, :] - source_points[None, :, :]
     distance = xp.linalg.norm(displacement, axis=2)
     singular = xp.any(distance == 0)
@@ -217,6 +218,8 @@ def evaluate_SC_3D(
     B_inc_backend = xp.asarray(B_inc)
     normal_cross_B = xp.cross(surface_normals_backend, B_inc_backend)
     normal_dot_E = xp.sum(surface_normals_backend * E_inc_backend, axis=1)
+    # The contour scalar is independent of observation position. Reducing it
+    # here avoids repeating the two vector products in every chunk.
     contour_backend = []
     for contour, B_contour in validated_contours:
         contour_points = xp.asarray(contour.points)

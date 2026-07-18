@@ -1,3 +1,5 @@
+"""Incident beam, aberration and 2D TM field models."""
+
 from math import factorial
 
 import numpy as np
@@ -678,6 +680,7 @@ class FiniteRayleighTM01Beam3D(TM01RadiallyPolarisedBeam3D):
     """
 
     def fields(self, points, *, k=None, amplitude=None, spectral_phase=0.0):
+        """Evaluate the finite-distance TM01 electric and magnetic phasors."""
         points = np.asarray(points, dtype=float)
         if points.ndim != 2 or points.shape[1] != 3:
             raise ValueError("points must have shape (n, 3)")
@@ -796,6 +799,7 @@ class ParaxialGaussLaguerreBeam3D:
         return np.pi * self.w0**2 / 2 * modal_norm
 
     def fields(self, points, *, k=None, amplitude=None, spectral_phase=0.0):
+        """Evaluate the propagated Gauss--Laguerre field at ``points``."""
         points = np.asarray(points, dtype=float)
         if points.ndim != 2 or points.shape[1] != 3:
             raise ValueError("points must have shape (n, 3)")

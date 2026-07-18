@@ -10,6 +10,8 @@ from .solvers import evaluate_SC_3D
 
 @dataclass(frozen=True)
 class QuadratureConvergenceLevel:
+    """Surface orders and field changes measured at one refinement level."""
+
     n_radial: int
     n_azimuthal: int
     relative_electric_change: float

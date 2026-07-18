@@ -80,6 +80,7 @@ def _fwhm(coordinate, intensity):
 
 
 def check_static_gaussian():
+    """Check that EPOCH preserves both injected Gaussian widths."""
     case = "static_gaussian_3d"
     metadata = _metadata(case)
     dumps = _dumps(case)
@@ -100,6 +101,7 @@ def check_static_gaussian():
 
 
 def check_phase_tilt():
+    """Recover the two imposed phase tilts from integrated Poynting flux."""
     case = "phase_tilt_3d"
     metadata = _metadata(case)
     dumps = _dumps(case)
@@ -117,6 +119,7 @@ def check_phase_tilt():
 
 
 def check_scpic_focus():
+    """Compare both EPOCH focal widths with the direct 3D references."""
     case = "scpic_focus_3d"
     metadata = _metadata(case)
     candidates = []
@@ -143,6 +146,7 @@ def check_scpic_focus():
 
 
 def main():
+    """Run all EPOCH3D output checks."""
     check_static_gaussian()
     check_phase_tilt()
     check_scpic_focus()

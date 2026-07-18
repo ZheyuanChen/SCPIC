@@ -49,6 +49,7 @@ def observation_partition(n_observations, rank=0, size=1):
 
 
 def _frequency_values(values, wavenumbers, name):
+    """Broadcast or evaluate a frequency-dependent scalar on the ``k`` grid."""
     if callable(values):
         values = values(wavenumbers)
     values = np.asarray(values, dtype=float)
@@ -60,6 +61,7 @@ def _frequency_values(values, wavenumbers, name):
 
 
 def _effective_area(incident, spectrum, effective_area):
+    """Resolve explicit or incident-field effective area for normalisation."""
     if effective_area is not None:
         return effective_area
     try:
@@ -144,6 +146,8 @@ def iter_broadband_field_chunks(
         contours = (contours,)
     else:
         contours = tuple(contours)
+    # The incident surface fields depend on frequency but not on observation
+    # position. Cache them once; the propagated fields remain chunked below.
     incident_surface_fields = []
     incident_contour_fields = []
     for k, coefficient, component_phase in zip(wavenumbers, coefficients, phase):
