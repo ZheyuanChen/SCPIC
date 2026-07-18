@@ -278,6 +278,7 @@ the tested reference implementation.
 
 | Document | Purpose |
 |---|---|
+| [`2D_f2_walkthrough.md`](2D_f2_walkthrough.md) | Physics and source trace for the campaign 2D f/2 profile |
 | [`docs/index.md`](docs/index.md) | Documentation map and release status |
 | [`docs/user_guide.md`](docs/user_guide.md) | End-to-end optical and EPOCH workflow |
 | [`docs/validation.md`](docs/validation.md) | Convergence, Maxwell, energy, paper, and EPOCH acceptance |

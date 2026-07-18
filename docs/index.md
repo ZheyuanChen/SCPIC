@@ -9,6 +9,7 @@ the separate two-dimensional solver is a TM reduction intended for EPOCH2D.
 
 | Goal | Document |
 |---|---|
+| Understand the campaign's 2D f/2 geometry and code path | [2D f/2 walkthrough](../2D_f2_walkthrough.md) |
 | Generate a first monochromatic or broadband profile | [User guide](user_guide.md) |
 | Generate a pulsed f/2-style EPOCH2D profile | [User guide, EPOCH export](user_guide.md#10-epoch-export) |
 | Decide whether a result is sufficiently converged | [Validation and acceptance](validation.md) |
