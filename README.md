@@ -2,12 +2,12 @@
 
 SCPIC (Stratton-Chu for Particle-in-Cell simulations) computes two-dimensional TM or fully vectorial three-dimensional laser
 fields reflected by parabolic mirrors, then exports transverse electric-field
-profiles for the custom laser reader in the modified EPOCH checkout. The 3D
-path follows the physical-optics Stratton--Chu method of Vallières *et al.*
-(2023) and Dumont *et al.* (2017), with implementation insights from
-C. F. Nielsen (2022). It supports OAP90, on-axis and annular
+profiles for the custom laser reader in the [modified EPOCH](https://github.com/ZheyuanChen/epoch_dev/tree/upstream-pr-custom-laser-injection) checkout. The 3D
+path follows the physical-optics Stratton--Chu method of [Vallières *et al.*
+(2023)](https://opg.optica.org/oe/fulltext.cfm?uri=oe-31-12-19319) and [Dumont *et al.* (2017)](https://iopscience.iop.org/article/10.1088/2040-8986/aa52e9), with implementation insights from
+[C. F. Nielsen (2022)](https://www.sciencedirect.com/science/article/pii/S0010465522001448?via%3Dihub). It supports OAP90, on-axis and annular
 transmission-parabola apertures, including the NA = 0.96 experimental geometry
-reported by Fourmaux *et al.* (2025).
+reported by [Fourmaux *et al.* (2025)](https://opg.optica.org/ol/abstract.cfm?uri=ol-50-22-7027).
 
 The code uses one complex convention throughout:
 
